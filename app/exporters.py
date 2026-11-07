@@ -45,10 +45,32 @@ def _chapter_blocks(job: dict[str, Any]) -> list[dict[str, Any]]:
     return blocks or [{"start": 0, "end": float("inf"), "title": "全文", "paragraphs": paragraphs}]
 
 
+def _correction_line(job: dict[str, Any]) -> tuple[str, str] | None:
+    correction = job.get("correction")
+    if not isinstance(correction, dict):
+        return None
+    status = correction.get("status")
+    applied = int(correction.get("applied") or 0)
+    model = correction.get("model") or "DeepSeek"
+    if status == "applied":
+        return ("AI 校正：", f"已应用 {applied} 处（{model}），仅修正明显识别错误；原始转写保留在任务数据中。")
+    if status == "partial":
+        return ("AI 校正：", f"已应用 {applied} 处（{model}），部分批次失败；原始转写保留在任务数据中。")
+    if status == "unchanged":
+        return ("AI 校正：", f"已完成（{model}），未发现明显错误。")
+    if status == "failed":
+        return ("AI 校正：", "失败，已保留原始转写。" + (f"原因：{correction.get('error')}" if correction.get("error") else ""))
+    if status == "undone":
+        return ("AI 校正：", "已撤销，当前为原始转写。")
+    if status == "disabled":
+        return ("AI 校正：", "未启用。")
+    return None
+
+
 def _metadata_lines(job: dict[str, Any]) -> list[tuple[str, str]]:
     names = "；".join(s.get("name", "") for s in job.get("speakers", []))
     audio = job.get("audio", {})
-    return [
+    lines = [
         ("音频：", f"{audio.get('filename', '')}（总长约 {format_duration(audio.get('duration'))}）"),
         ("访谈双方：", names),
         (
@@ -61,6 +83,12 @@ def _metadata_lines(job: dict[str, Any]) -> list[tuple[str, str]]:
             "由 Transcriptor 自动转写并做基础文本清理；说话人、专有名词和章节标题建议人工复核。",
         ),
     ]
+    correction = _correction_line(job)
+    if correction:
+        lines.append(correction)
+    if not (job.get("settings") or {}).get("chapters", True):
+        lines.append(("自动分章：", "未启用。"))
+    return lines
 
 
 def render_markdown(job: dict[str, Any]) -> str:

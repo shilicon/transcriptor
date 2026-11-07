@@ -1,27 +1,39 @@
 # Transcriptor
 
-本地访谈转写应用：上传音频或视频，自动生成带说话人姓名、时间戳、章节的逐字稿，并导出 Markdown / Word。
+原生 macOS 访谈转写应用（SwiftUI）：上传音频或视频，自动生成带说话人姓名、时间戳、章节的逐字稿，并导出 Markdown / Word。
 
 工作目录：`/Users/skmacair/work/transcriptor`
 
 ## 功能
 
-- 本机运行，音频不上传云端
+- 音频只在本机处理，不上传云端
 - MLX Whisper 转写（默认 `large-v3`，可切换 `turbo`）
 - Resemblyzer 声纹聚类，自动分离 1–4 位说话人
 - 按说话人合并连续发言，长回答自动分段
-- 自动生成基础章节；可选连接本地 LLM 生成语义化章节标题
-- 可在网页中修改说话人姓名、章节标题和时间点
+- **默认启用 AI 校正**：用 DeepSeek V4.1 Flash 自动修正明显 ASR 错误，不改写、不润色、不补充内容
+- AI 校正可全局或按任务关闭；失败时保留原始转写，不降级到小模型
+- 自动分章默认开启，也可按任务关闭
+- 可在应用内修改逐字稿文字、说话人、章节标题和时间点
 - 导出 Markdown 和 Word（`.docx`）
 
-## 启动
+## 启动 macOS App
+
+双击仓库根目录的 `Transcriptor.app`，或双击 `Transcriptor.command`。
 
 ```bash
 cd /Users/skmacair/work/transcriptor
-./run.sh
+open Transcriptor.app
 ```
 
-打开 `http://127.0.0.1:8765`。也可以直接双击 `Transcriptor.command`，它会启动服务并自动打开浏览器。
+App 是原生 SwiftUI 界面；启动后会自动拉起本地 Python 转写后端，关闭 App 时会一并停止后端。
+
+重新构建 App：
+
+```bash
+./macapp/build_app.sh
+```
+
+需要 Xcode / Swift 工具链。App 依赖当前仓库里的 `.venv` 和 `models/whisper-large-v3`，不要单独移动 `.app`。
 
 当前目录已经准备好 `.venv` 和 `models/whisper-large-v3`，直接运行即可。换机器时执行：
 
@@ -33,13 +45,43 @@ cd /Users/skmacair/work/transcriptor
 
 ## 使用流程
 
-1. 上传音频/视频（MP3、WAV、M4A、MP4、MOV 等）。
+1. 在 App 里点击“新建转写”，选择音频/视频。
 2. 填写标题、说话人姓名（按首次发言顺序，用逗号分隔）、说话人数和语言。
-3. 开始转写。页面会显示转写、说话人分离、整理、导出等阶段。
-4. 完成后：
+3. 选择是否启用 **AI 校正**（默认开）和 **自动分章**（默认开）。
+4. 开始转写。窗口会显示转写、说话人分离、整理、AI 校正、章节、导出等阶段。
+5. 完成后：
+   - 查看 AI 校正结果，必要时撤销；
    - 在“说话人”里修正姓名；
+   - 在“逐字稿”里编辑文字和逐段说话人；
    - 在“章节”里编辑时间点和标题；
-   - 下载 Markdown 或 Word。
+   - 导出 Markdown 或 Word。
+
+## AI 校正
+
+默认使用 **DeepSeek V4.1 Flash API**，直接修正明显错误并应用：
+
+- 人名、公司名、产品名
+- 明显的同音词、ASR 误识别
+- 标点、大小写、句子边界
+- 意外重复的词
+
+不会做：
+
+- 改写、润色、调整语序
+- 删除口语词
+- 合并/拆分段落
+- 增加解释或补充内容
+- 修改数字、时间戳、说话人
+
+后端会逐条校验模型返回的局部修改；不合格的修改会被丢弃。DeepSeek 不可用时，任务继续，保留原始转写并提示失败，不会回退到低能力模型。
+
+API Key 保存在 macOS 钥匙串。在 App 菜单 → **设置 → AI 校正** 中填写：
+
+- DeepSeek API Key
+- Base URL（默认 `https://api.deepseek.com`）
+- 模型 ID（默认 `deepseek-flash`，以你的 DeepSeek 账号实际可用标识为准）
+
+校正时逐字稿文本会发送到 DeepSeek API，音频不会离开本机。
 
 ## 可选：AI 自动分章
 
@@ -57,7 +99,7 @@ cd /Users/skmacair/work/transcriptor
 ~/.lmstudio/bin/lms load gemma-4-e4b-it-mlx
 ```
 
-在网页“章节”页填写：
+在 App 的“章节”页填写：
 
 - Endpoint：`http://127.0.0.1:1234/v1`（以 LM Studio 实际端口为准，应用会自动探测 1234/1235/11434）
 - Model：`gemma-4-e4b`，或留空自动选择
@@ -75,6 +117,17 @@ Endpoint 填 `http://127.0.0.1:11434/v1`，Model 填 `qwen3`。
 
 接口不可用时，仍可使用“基础分章”，或手动编辑章节。
 
+## 开发用 Web 界面
+
+仓库里仍保留一套浏览器界面，仅用于开发调试：
+
+```bash
+./run.sh
+# http://127.0.0.1:8765
+```
+
+原生 App 不需要打开浏览器。
+
 ## 数据与目录
 
 ```text
@@ -86,14 +139,19 @@ data/jobs/<job-id>/
   transcript.docx
 ```
 
-任务、转写结果和导出文件都保存在 `data/jobs`。删除网页中的任务会同时删除该目录。
+任务、转写结果和导出文件都保存在 `data/jobs`。删除 App 中的任务会同时删除该目录。
 
 环境变量：
 
 - `TRANSCRIPTOR_DATA_DIR`：数据目录，默认 `data`
 - `TRANSCRIPTOR_MODELS_DIR`：模型目录，默认 `models`
-- `TRANSCRIPTOR_LLM_BASE_URL`：默认 LLM 地址
-- `TRANSCRIPTOR_LLM_MODEL`：默认 LLM 模型
+- `TRANSCRIPTOR_LLM_BASE_URL`：AI 分章默认 LLM 地址
+- `TRANSCRIPTOR_LLM_MODEL`：AI 分章默认 LLM 模型
+- `TRANSCRIPTOR_DEEPSEEK_API_KEY`：DeepSeek API Key（原生 App 通常用钥匙串）
+- `TRANSCRIPTOR_DEEPSEEK_BASE_URL`：DeepSeek Base URL
+- `TRANSCRIPTOR_DEEPSEEK_MODEL`：DeepSeek 模型 ID
+- `TRANSCRIPTOR_AI_CORRECTION`：默认是否启用 AI 校正（`1` / `0`）
+- `TRANSCRIPTOR_CHAPTERS`：默认是否自动分章（`1` / `0`）
 
 ## 实现结构
 
@@ -102,9 +160,18 @@ data/jobs/<job-id>/
 - `app/transcribe.py`：ffmpeg 提取音轨、MLX Whisper 转写
 - `app/diarize.py`：Resemblyzer 声纹嵌入 + KMeans 聚类
 - `app/formatting.py`：说话人合并、分段、文本清理、术语校正
+- `app/correction.py`：DeepSeek 自动校正、局部修改校验、原稿保留
 - `app/chapters.py`：基础分章与 LLM 分章
 - `app/exporters.py`：Markdown / DOCX 导出
-- `app/static/`、`app/templates/`：前端页面
+- `app/static/`、`app/templates/`：开发用浏览器界面
+- `macapp/Sources/Transcriptor/`：原生 SwiftUI App
+- `macapp/build_app.sh`：构建 `Transcriptor.app`
+
+## 测试
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
 
 ## 说明
 

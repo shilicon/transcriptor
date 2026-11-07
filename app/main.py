@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import shutil
+import threading
+import time
 import uuid
 
 import httpx
@@ -18,6 +21,10 @@ from starlette.concurrency import run_in_threadpool
 from .chapters import ChapterError, auto_chapters_llm, make_basic_chapters
 from .config import (
     ALLOWED_EXTENSIONS,
+    DEFAULT_AI_CORRECTION,
+    DEFAULT_CHAPTERS,
+    DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
     DEFAULT_WHISPER_MODEL,
@@ -28,6 +35,7 @@ from .config import (
 from .exporters import render_docx, render_markdown
 from .formatting import build_speakers, parse_speaker_names
 from .pipeline import run_pipeline
+from .secrets import set_job_secret
 from .utils import (
     clean_filename,
     format_duration,
@@ -42,8 +50,29 @@ from .utils import (
 executor = ThreadPoolExecutor(max_workers=1)
 
 
+def _watch_parent(pid: int) -> None:
+    """Exit when the native macOS app that launched us disappears."""
+    while True:
+        time.sleep(2)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            os._exit(0)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    parent_pid = os.environ.get("TRANSCRIPTOR_PARENT_PID")
+    if parent_pid:
+        try:
+            threading.Thread(
+                target=_watch_parent,
+                args=(int(parent_pid),),
+                daemon=True,
+            ).start()
+        except ValueError:
+            pass
+
     # Mark interrupted jobs instead of leaving them "running" forever.
     for folder in JOBS_DIR.iterdir():
         if not folder.is_dir():
@@ -97,7 +126,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "id", "title", "created_at", "started_at", "finished_at",
         "status", "stage", "progress", "error", "audio", "settings",
         "speakers", "paragraphs", "chapters", "stats", "exports",
-        "export_error", "speaker_names",
+        "export_error", "speaker_names", "correction", "correction_warning",
     ]
     return {key: job.get(key) for key in keys}
 
@@ -169,6 +198,14 @@ def config() -> dict[str, Any]:
             for key, path in WHISPER_MODELS.items()
         ],
         "default_model": DEFAULT_WHISPER_MODEL,
+        "ai_correction_default": DEFAULT_AI_CORRECTION,
+        "chapters_default": DEFAULT_CHAPTERS,
+        "deepseek_base_url": DEFAULT_DEEPSEEK_BASE_URL,
+        "deepseek_model": DEFAULT_DEEPSEEK_MODEL,
+        "deepseek_configured": bool(
+            os.environ.get("TRANSCRIPTOR_DEEPSEEK_API_KEY")
+            or os.environ.get("DEEPSEEK_API_KEY")
+        ),
     }
 
 
@@ -181,6 +218,11 @@ def create_job(
     language: str = Form("auto"),
     model: str = Form(DEFAULT_WHISPER_MODEL),
     initial_prompt: str = Form(""),
+    ai_correction: bool = Form(DEFAULT_AI_CORRECTION),
+    chapters: bool = Form(DEFAULT_CHAPTERS),
+    deepseek_base_url: str = Form(DEFAULT_DEEPSEEK_BASE_URL),
+    deepseek_model: str = Form(DEFAULT_DEEPSEEK_MODEL),
+    deepseek_api_key: str = Form(""),
 ) -> dict[str, str]:
     if num_speakers < 1 or num_speakers > 4:
         raise HTTPException(status_code=400, detail="说话人数量需在 1–4 之间。")
@@ -231,6 +273,10 @@ def create_job(
             "num_speakers": num_speakers,
             "model": model,
             "initial_prompt": initial_prompt.strip(),
+            "ai_correction": bool(ai_correction),
+            "chapters": bool(chapters),
+            "deepseek_base_url": deepseek_base_url.strip() or DEFAULT_DEEPSEEK_BASE_URL,
+            "deepseek_model": deepseek_model.strip() or DEFAULT_DEEPSEEK_MODEL,
         },
         "speaker_names": names,
         "speakers": build_speakers(names),
@@ -238,6 +284,8 @@ def create_job(
         "chapters": [],
         "stats": {},
     }
+    if deepseek_api_key.strip():
+        set_job_secret(job_id, "deepseek_api_key", deepseek_api_key.strip())
     save_job(job)
     executor.submit(run_pipeline, job_id)
     return {"id": job_id}
@@ -367,6 +415,29 @@ async def auto_chapters(job_id: str, payload: AutoChaptersRequest) -> dict[str, 
     job["chapters"] = chapters
     save_job(job)
     await run_in_threadpool(_refresh_exports, job)
+    return _public_job(job)
+
+
+@app.post("/api/jobs/{job_id}/correction/undo")
+def undo_correction(job_id: str) -> dict[str, Any]:
+    job = _require_job(job_id)
+    if job.get("status") != "done":
+        raise HTTPException(status_code=409, detail="任务还未完成。")
+    changed = 0
+    for paragraph in job.get("paragraphs", []):
+        original = paragraph.get("original_text")
+        if original is not None and paragraph.get("text") != original:
+            paragraph["text"] = original
+            changed += 1
+        paragraph.pop("correction_edits", None)
+        paragraph["correction_status"] = "original"
+    correction = job.setdefault("correction", {})
+    correction["status"] = "undone"
+    correction["applied"] = 0
+    correction["error"] = None
+    job.pop("correction_warning", None)
+    save_job(job)
+    _refresh_exports(job)
     return _public_job(job)
 
 

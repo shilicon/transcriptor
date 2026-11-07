@@ -8,3 +8,14 @@ data/server.pid
 models/*
 !models/.gitkeep
 .DS_Store
+
+Transcriptor.app/
+macapp/.build/
+macapp/dist/
+
+data/macapp-backend.log
+
+data/test-server.log
+data/test-server.pid
+data/*.log
+data/*.pid

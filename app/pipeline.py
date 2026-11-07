@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import os
 import traceback
 from pathlib import Path
 from typing import Any
 
 from .chapters import make_basic_chapters
-from .config import JOBS_DIR
+from .config import (
+    DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_MODEL,
+    JOBS_DIR,
+)
+from .correction import CorrectionError, correct_paragraphs
 from .diarize import diarize_segments
 from .exporters import render_docx, render_markdown
 from .formatting import build_paragraphs, build_speakers
+from .secrets import pop_job_secrets
 from .transcribe import extract_audio, probe_duration, transcribe
 from .utils import job_dir, load_job, now_iso, save_job
 
@@ -92,19 +99,76 @@ def run_pipeline(job_id: str) -> None:
             speaker_indices,
             language=job["settings"].get("language"),
         )
-        for paragraph in paragraphs:
+        for index, paragraph in enumerate(paragraphs, start=1):
+            paragraph["id"] = f"p{index:04d}"
             paragraph["speaker_id"] = f"S{int(paragraph['speaker']) + 1}"
+            paragraph["original_text"] = paragraph["text"]
             paragraph.pop("speaker", None)
         job["paragraphs"] = paragraphs
-
-        _update(job, "正在生成章节", 92)
-        job["chapters"] = make_basic_chapters(paragraphs, duration)
         job["stats"] = {
             "segments": len(segments),
             "paragraphs": len(paragraphs),
             "speakers": speaker_count,
         }
-        _update(job, "正在导出 Markdown 和 Word", 97)
+
+        ai_correction = bool(job["settings"].get("ai_correction", True))
+        chapters_enabled = bool(job["settings"].get("chapters", True))
+        job["correction"] = {
+            "enabled": ai_correction,
+            "status": "pending" if ai_correction else "disabled",
+            "model": job["settings"].get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL,
+            "applied": 0,
+            "rejected": 0,
+            "batches": 0,
+            "errors": [],
+            "error": None,
+        }
+
+        if ai_correction:
+            _update(job, "正在 AI 校正", 88)
+            secrets = pop_job_secrets(job_id)
+            api_key = (
+                secrets.get("deepseek_api_key")
+                or os.environ.get("TRANSCRIPTOR_DEEPSEEK_API_KEY")
+                or os.environ.get("DEEPSEEK_API_KEY")
+                or ""
+            )
+            speakers_map = {speaker["id"]: speaker["name"] for speaker in job["speakers"]}
+            try:
+                result = correct_paragraphs(
+                    paragraphs=paragraphs,
+                    speakers=speakers_map,
+                    api_key=api_key,
+                    base_url=job["settings"].get("deepseek_base_url") or DEFAULT_DEEPSEEK_BASE_URL,
+                    model=job["settings"].get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL,
+                    progress=lambda stage, pct: _update(job, stage, pct),
+                )
+                job["correction"].update(
+                    status="applied" if result["applied"] else "unchanged",
+                    applied=result["applied"],
+                    rejected=result["rejected"],
+                    batches=result["batches"],
+                    errors=result.get("errors") or [],
+                    model=result.get("model") or job["correction"]["model"],
+                )
+                if result.get("errors"):
+                    job["correction"]["status"] = "partial"
+                    job["correction"]["error"] = "；".join(result["errors"][:3])
+                job["stats"]["corrected"] = result["applied"]
+            except CorrectionError as exc:
+                job["correction"].update(status="failed", error=str(exc))
+                job["correction_warning"] = str(exc)
+            except Exception as exc:
+                job["correction"].update(status="failed", error=str(exc))
+                job["correction_warning"] = str(exc)
+
+        if chapters_enabled:
+            _update(job, "正在生成章节", 96)
+            job["chapters"] = make_basic_chapters(paragraphs, duration)
+        else:
+            job["chapters"] = []
+
+        _update(job, "正在导出 Markdown 和 Word", 98)
         _finish(job)
     except Exception as exc:
         job = load_job(job_id) or job
@@ -115,3 +179,5 @@ def run_pipeline(job_id: str) -> None:
         job["traceback"] = traceback.format_exc()
         save_job(job)
         print(f"[transcriptor] job {job_id} failed:\n{job['traceback']}")
+    finally:
+        pop_job_secrets(job_id)

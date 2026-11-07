@@ -26,6 +26,15 @@ DEFAULT_LLM_BASE_URL = os.environ.get(
 )
 DEFAULT_LLM_MODEL = os.environ.get("TRANSCRIPTOR_LLM_MODEL", "")
 
+DEFAULT_DEEPSEEK_BASE_URL = os.environ.get(
+    "TRANSCRIPTOR_DEEPSEEK_BASE_URL", "https://api.deepseek.com"
+)
+DEFAULT_DEEPSEEK_MODEL = os.environ.get(
+    "TRANSCRIPTOR_DEEPSEEK_MODEL", "deepseek-flash"
+)
+DEFAULT_AI_CORRECTION = os.environ.get("TRANSCRIPTOR_AI_CORRECTION", "1") == "1"
+DEFAULT_CHAPTERS = os.environ.get("TRANSCRIPTOR_CHAPTERS", "1") == "1"
+
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB
 ALLOWED_EXTENSIONS = {
     ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus",
