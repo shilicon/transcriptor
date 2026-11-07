@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transcriptor · 访谈逐字稿</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">T</span>
+      <span class="brand-name">Transcriptor</span>
+      <span class="brand-sub">访谈音频转逐字稿</span>
+    </div>
+    <div class="top-meta">
+      <span class="local-dot"></span>
+      <span>本地处理</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card upload-card">
+        <div class="eyebrow">新建任务</div>
+        <h1>上传一次访谈</h1>
+        <p class="muted">自动转写、分离说话人、整理段落，并生成可编辑的章节。</p>
+
+        <form id="upload-form">
+          <label class="dropzone" id="dropzone">
+            <input type="file" id="file" accept="audio/*,video/*" hidden>
+            <span class="drop-icon">＋</span>
+            <strong id="file-label">拖入文件或点击选择</strong>
+            <span class="muted small">MP3 / WAV / M4A / MP4 / MOV</span>
+          </label>
+
+          <label class="field">标题
+            <input id="title" type="text" placeholder="默认使用文件名">
+          </label>
+
+          <label class="field">说话人姓名
+            <span class="hint">按首次发言顺序，用逗号分隔</span>
+            <input id="speakers" type="text" value="说话人 1, 说话人 2">
+          </label>
+
+          <div class="row">
+            <label class="field">说话人数
+              <select id="num-speakers">
+                <option value="1">1 人</option>
+                <option value="2" selected>2 人</option>
+                <option value="3">3 人</option>
+                <option value="4">4 人</option>
+              </select>
+            </label>
+            <label class="field">语言
+              <select id="language">
+                <option value="auto">自动识别</option>
+                <option value="en">English</option>
+                <option value="zh">中文</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field">语音模型
+            <select id="model">
+              <option value="large-v3">large-v3（推荐）</option>
+              <option value="turbo">turbo（更快）</option>
+            </select>
+          </label>
+
+          <details class="advanced">
+            <summary>高级设置</summary>
+            <label class="field">初始提示词
+              <input id="initial-prompt" type="text" placeholder="可选，例如人名、产品名">
+            </label>
+          </details>
+
+          <button type="submit" class="primary wide" id="start-btn">开始转写</button>
+        </form>
+      </section>
+
+      <section class="card jobs-card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">历史</div>
+            <h2>最近任务</h2>
+          </div>
+          <button id="refresh-jobs" class="ghost small-btn">刷新</button>
+        </div>
+        <div id="job-list" class="job-list">
+          <p class="muted">暂无任务</p>
+        </div>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div id="empty-state" class="empty">
+        <div class="empty-orbit"><span>◎</span></div>
+        <h2>把访谈变成可编辑的逐字稿</h2>
+        <p>上传音频后，Transcriptor 会在本机完成转写、说话人分离、段落整理和章节生成。</p>
+        <div class="empty-points">
+          <span>音频不上传云端</span>
+          <span>Markdown / Word 导出</span>
+          <span>说话人和章节可编辑</span>
+        </div>
+      </div>
+
+      <div id="job-view" class="hidden">
+        <div class="card job-head">
+          <div class="job-head-main">
+            <div class="eyebrow" id="job-status">处理中</div>
+            <h1 id="job-title">未命名任务</h1>
+            <div class="meta" id="job-meta"></div>
+          </div>
+          <div class="actions">
+            <a id="dl-md" class="button" href="#">Markdown</a>
+            <a id="dl-docx" class="button" href="#">Word</a>
+            <button id="delete-job" class="button danger">删除</button>
+          </div>
+        </div>
+
+        <div id="export-warning" class="card warning-card hidden">
+          <strong>导出提示</strong>
+          <p id="export-warning-text"></p>
+        </div>
+
+        <div id="progress-card" class="card progress-card">
+          <div class="progress-head">
+            <span id="stage">排队中</span>
+            <span id="progress-text">0%</span>
+          </div>
+          <div class="bar"><div id="progress-bar"></div></div>
+          <p class="muted small">转写时间取决于音频长度和模型；页面可以保持打开，也可以稍后回来查看。</p>
+        </div>
+
+        <div id="error-card" class="card error-card hidden">
+          <div class="eyebrow">处理失败</div>
+          <h2>这次没有完成</h2>
+          <pre id="error-text"></pre>
+        </div>
+
+        <div id="result" class="hidden">
+          <div class="card speakers-card">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">说话人</div>
+                <h2>确认说话人姓名</h2>
+                <p class="muted small">自动按首次发言顺序分配。如果顺序反了，直接改名即可。</p>
+              </div>
+              <button id="save-speakers" class="button">保存姓名</button>
+            </div>
+            <div id="speaker-inputs" class="speaker-grid"></div>
+          </div>
+
+          <div class="card transcript-card">
+            <div class="tabs">
+              <button class="tab active" data-tab="transcript">逐字稿</button>
+              <button class="tab" data-tab="chapters">章节</button>
+            </div>
+
+            <div id="tab-transcript" class="tab-panel">
+              <div class="transcript-toolbar">
+                <div class="eyebrow">正文</div>
+                <div class="toolbar-actions">
+                  <button id="edit-transcript" class="button small-btn">编辑文字</button>
+                  <button id="save-transcript" class="primary small-btn hidden">保存文字</button>
+                </div>
+              </div>
+              <div class="transcript" id="transcript"></div>
+            </div>
+
+            <div id="tab-chapters" class="tab-panel hidden">
+              <div class="ai-panel">
+                <div class="ai-copy">
+                  <div class="eyebrow">可选</div>
+                  <h2>自动分章</h2>
+                  <p class="muted small">连接本地 LM Studio / Ollama 的 OpenAI 兼容接口，按内容生成章节标题。端口会自动探测，也可以手动填写。没有启动模型时，可以先用“基础分章”。</p>
+                </div>
+                <div class="ai-fields">
+                  <input id="llm-endpoint" type="text" placeholder="http://127.0.0.1:1234/v1">
+                  <input id="llm-model" type="text" placeholder="模型名，留空优先选择非推理模型">
+                  <select id="title-language">
+                    <option value="zh">中文标题</option>
+                    <option value="en">English titles</option>
+                  </select>
+                  <button id="auto-chapters" class="primary">AI 自动分章</button>
+                  <button id="basic-chapters" class="button">基础分章</button>
+                </div>
+              </div>
+              <div id="chapter-editor" class="chapter-editor"></div>
+              <div class="chapter-actions">
+                <button id="add-chapter" class="button">添加章节</button>
+                <button id="save-chapters" class="primary">保存章节</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
