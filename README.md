@@ -50,7 +50,7 @@ open Transcriptor.app
 .venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('mlx-community/whisper-large-v3-mlx', local_dir='models/whisper-large-v3')"
 ```
 
-如果无法直接访问 Hugging Face，可以在命令前加 `HF_ENDPOINT=https://hf-mirror.com`。
+如果无法直接访问 Hugging Face，可以在命令前加 `HF_ENDPOINT=https://hf-mirror.com`；如果下载卡住，再设置 `HF_HUB_DISABLE_XET=1`。
 
 如需 `turbo`：
 
