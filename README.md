@@ -44,11 +44,13 @@ open Transcriptor.app
 - `large-v3`（默认）：`models/whisper-large-v3/`
 - `turbo`：`models/whisper-large-v3-turbo/`
 
-模型目录应包含 `config.json` 和 `weights.npz`。可以从 Hugging Face 下载：
+模型目录应包含 `config.json` 和权重文件（`weights.npz` 或 `weights.safetensors`）。可以从 Hugging Face 下载：
 
 ```bash
 .venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('mlx-community/whisper-large-v3-mlx', local_dir='models/whisper-large-v3')"
 ```
+
+如果无法直接访问 Hugging Face，可以在命令前加 `HF_ENDPOINT=https://hf-mirror.com`。
 
 如需 `turbo`：
 
