@@ -2,8 +2,6 @@
 
 原生 macOS 访谈转写应用（SwiftUI）：上传音频或视频，自动生成带说话人姓名、时间戳、章节的逐字稿，并导出 Markdown / Word。
 
-工作目录：`/Users/skmacair/work/transcriptor`
-
 ## 功能
 
 - 音频只在本机处理，不上传云端
