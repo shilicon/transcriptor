@@ -5,7 +5,7 @@
 ## 功能
 
 - 音频只在本机处理，不上传云端
-- MLX Whisper 转写（默认 `large-v3`，可切换 `turbo`）
+- `mlx-whisper` 本地转写（默认 `large-v3`，可切换 `turbo`）
 - Resemblyzer 声纹聚类，自动分离 1–4 位说话人
 - 按说话人合并连续发言，长回答自动分段
 - **默认启用 AI 校正**：用 DeepSeek V4.1 Flash 自动修正明显 ASR 错误，不改写、不润色、不补充内容
@@ -14,32 +14,47 @@
 - 可在应用内修改逐字稿文字、说话人、章节标题和时间点
 - 导出 Markdown 和 Word（`.docx`）
 
-## 启动 macOS App
+## 安装与启动
 
-双击仓库根目录的 `Transcriptor.app`，或双击 `Transcriptor.command`。
-
-```bash
-cd /Users/skmacair/work/transcriptor
-open Transcriptor.app
-```
-
-App 是原生 SwiftUI 界面；启动后会自动拉起本地 Python 转写后端，关闭 App 时会一并停止后端。
-
-重新构建 App：
+首次使用先安装 Python 环境（需要 macOS Apple Silicon、`uv` 和 `ffmpeg`）：
 
 ```bash
-./macapp/build_app.sh
-```
-
-需要 Xcode / Swift 工具链。App 依赖当前仓库里的 `.venv` 和 `models/whisper-large-v3`，不要单独移动 `.app`。
-
-当前目录已经准备好 `.venv` 和 `models/whisper-large-v3`，直接运行即可。换机器时执行：
-
-```bash
+git clone https://github.com/shilicon/transcriptor.git
+cd transcriptor
 ./scripts/setup.sh
 ```
 
-并把 MLX Whisper 模型放到 `models/whisper-large-v3/`。模型目录应包含 `config.json` 和 `weights.npz`。
+`setup.sh` 会创建 `.venv` 并安装 Python 依赖。还需要把 `mlx-whisper` 模型放到 `models/`，见下方“语音模型”。
+
+构建并启动 App：
+
+```bash
+./macapp/build_app.sh
+open Transcriptor.app
+```
+
+之后也可以双击 `Transcriptor.app` 或 `Transcriptor.command` 启动。App 是原生 SwiftUI 界面；启动后会自动拉起本地 Python 转写后端，关闭 App 时会一并停止后端。
+
+重新构建 App 需要 Xcode / Swift 工具链。App 依赖仓库中的 `.venv` 和 `models/whisper-large-v3`，请从仓库内启动，不要单独移动 `.app`。
+
+## 语音模型（mlx-whisper）
+
+转写由 [`mlx-whisper`](https://github.com/ml-explore/mlx-examples/tree/main/whisper) 在 Apple Silicon 上本地完成，音频不会离开本机。模型需要是 MLX 格式：
+
+- `large-v3`（默认）：`models/whisper-large-v3/`
+- `turbo`：`models/whisper-large-v3-turbo/`
+
+模型目录应包含 `config.json` 和 `weights.npz`。可以从 Hugging Face 下载：
+
+```bash
+.venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('mlx-community/whisper-large-v3-mlx', local_dir='models/whisper-large-v3')"
+```
+
+如需 `turbo`：
+
+```bash
+.venv/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download('mlx-community/whisper-large-v3-turbo', local_dir='models/whisper-large-v3-turbo')"
+```
 
 ## 使用流程
 
@@ -92,10 +107,13 @@ API Key 保存在 macOS 钥匙串。在 App 菜单 → **设置 → AI 校正** 
 ```
 
 这个脚本会启动 LM Studio 服务并加载 Gemma 4B。也可以手动执行：
+
 ```bash
-~/.lmstudio/bin/lms server start
-~/.lmstudio/bin/lms load gemma-4-e4b-it-mlx
+lms server start
+lms load gemma-4-e4b-it-mlx
 ```
+
+如果 `lms` 不在 `PATH` 中，请使用 LM Studio 安装目录下的 CLI。
 
 在 App 的“章节”页填写：
 
@@ -155,7 +173,7 @@ data/jobs/<job-id>/
 
 - `app/main.py`：FastAPI 路由、上传、任务 API
 - `app/pipeline.py`：转写 → 说话人分离 → 段落整理 → 章节 → 导出
-- `app/transcribe.py`：ffmpeg 提取音轨、MLX Whisper 转写
+- `app/transcribe.py`：ffmpeg 提取音轨、`mlx-whisper` 转写
 - `app/diarize.py`：Resemblyzer 声纹嵌入 + KMeans 聚类
 - `app/formatting.py`：说话人合并、分段、文本清理、术语校正
 - `app/correction.py`：DeepSeek 自动校正、局部修改校验、原稿保留
