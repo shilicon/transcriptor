@@ -1,11 +1,20 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum SourceMode: String, CaseIterable, Identifiable {
+    case file = "本地文件"
+    case youtube = "YouTube 链接"
+
+    var id: String { rawValue }
+}
+
 struct NewJobView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
+    @State private var sourceMode: SourceMode = .file
     @State private var fileURL: URL?
+    @State private var youtubeURL = ""
     @State private var title = ""
     @State private var speakers = "说话人 1, 说话人 2"
     @State private var numSpeakers = 2
@@ -47,10 +56,51 @@ struct NewJobView: View {
         ]
     }
 
+    private var normalizedYouTubeURL: String {
+        youtubeURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isValidYouTubeURL: Bool {
+        guard let components = URLComponents(string: normalizedYouTubeURL),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host?.lowercased() else {
+            return false
+        }
+        let isYouTubeHost = host == "youtu.be"
+            || host == "youtube.com"
+            || host == "youtube-nocookie.com"
+            || host.hasSuffix(".youtube.com")
+            || host.hasSuffix(".youtube-nocookie.com")
+        guard isYouTubeHost else { return false }
+
+        let path = components.path
+        if host == "youtu.be" {
+            return !path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty
+        }
+        if path == "/watch" || path == "/watch/" {
+            return components.queryItems?.contains {
+                $0.name == "v" && !($0.value ?? "").isEmpty
+            } ?? false
+        }
+        return ["/shorts/", "/live/", "/embed/", "/v/", "/clip/"].contains {
+            path.hasPrefix($0) && path.count > $0.count
+        }
+    }
+
+    private var canStart: Bool {
+        switch sourceMode {
+        case .file:
+            return fileURL != nil
+        case .youtube:
+            return isValidYouTubeURL
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                SectionTitle(eyebrow: "新建任务", title: "上传一次访谈")
+                SectionTitle(eyebrow: "新建任务", title: "添加一次访谈")
                 Spacer()
                 Button {
                     dismiss()
@@ -67,12 +117,27 @@ struct NewJobView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    dropZone
+                    Picker("", selection: $sourceMode) {
+                        ForEach(SourceMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    if sourceMode == .file {
+                        dropZone
+                    } else {
+                        youtubeField
+                    }
 
                     VStack(alignment: .leading, spacing: 14) {
                         field("标题") {
-                            TextField("默认使用文件名", text: $title)
-                                .textFieldStyle(.roundedBorder)
+                            TextField(
+                                sourceMode == .file ? "默认使用文件名" : "默认使用视频标题",
+                                text: $title
+                            )
+                            .textFieldStyle(.roundedBorder)
                         }
 
                         field("说话人姓名") {
@@ -175,7 +240,7 @@ struct NewJobView: View {
             Divider()
 
             HStack {
-                Text("音频只在本机处理。")
+                Text(sourceMode == .file ? "音频只在本机处理。" : "音频下载后只在本机处理。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -187,13 +252,13 @@ struct NewJobView: View {
                     if isStarting {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("开始转写")
+                        Text(sourceMode == .file ? "开始转写" : "下载并转写")
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(transcriptorAccent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(fileURL == nil || isStarting)
+                .disabled(!canStart || isStarting)
             }
             .padding(18)
         }
@@ -213,6 +278,9 @@ struct NewJobView: View {
             }
             aiCorrection = aiCorrectionDefault
             chapters = chaptersDefault
+        }
+        .onChange(of: sourceMode) { _, _ in
+            localError = nil
         }
     }
 
@@ -256,6 +324,28 @@ struct NewJobView: View {
         }
     }
 
+    private var youtubeField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("YouTube 视频链接", systemImage: "link")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(transcriptorAccent)
+            TextField("https://www.youtube.com/watch?v=...", text: $youtubeURL)
+                .textFieldStyle(.roundedBorder)
+            Text("仅下载音频，不使用 YouTube 自带字幕。支持 youtube.com、youtu.be、Shorts 和直播回放链接。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.025))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+    }
+
     private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
@@ -282,34 +372,67 @@ struct NewJobView: View {
     }
 
     private func start() {
-        guard let fileURL else { return }
         let apiKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
         if aiCorrection && apiKey.isEmpty && !(model.config?.deepseekConfigured ?? false) {
             localError = "请先在设置中填写 DeepSeek API Key，或关闭 AI 校正。"
             return
         }
-        isStarting = true
-        localError = nil
-        Task {
-            do {
-                try await model.createJob(
-                    fileURL: fileURL,
-                    title: title,
-                    speakers: speakers,
-                    numSpeakers: numSpeakers,
-                    language: language,
-                    model: modelKey,
-                    initialPrompt: initialPrompt,
-                    aiCorrection: aiCorrection,
-                    chapters: chapters,
-                    deepseekBaseURL: deepseekBaseURL,
-                    deepseekModel: deepseekModel,
-                    deepseekAPIKey: apiKey
-                )
-                dismiss()
-            } catch {
-                localError = error.localizedDescription
-                isStarting = false
+
+        switch sourceMode {
+        case .file:
+            guard let fileURL else { return }
+            isStarting = true
+            localError = nil
+            Task {
+                do {
+                    try await model.createJob(
+                        fileURL: fileURL,
+                        title: title,
+                        speakers: speakers,
+                        numSpeakers: numSpeakers,
+                        language: language,
+                        model: modelKey,
+                        initialPrompt: initialPrompt,
+                        aiCorrection: aiCorrection,
+                        chapters: chapters,
+                        deepseekBaseURL: deepseekBaseURL,
+                        deepseekModel: deepseekModel,
+                        deepseekAPIKey: apiKey
+                    )
+                    dismiss()
+                } catch {
+                    localError = error.localizedDescription
+                    isStarting = false
+                }
+            }
+        case .youtube:
+            guard isValidYouTubeURL else {
+                localError = "请输入有效的 YouTube 视频链接。"
+                return
+            }
+            isStarting = true
+            localError = nil
+            Task {
+                do {
+                    try await model.createJobFromURL(
+                        url: normalizedYouTubeURL,
+                        title: title,
+                        speakers: speakers,
+                        numSpeakers: numSpeakers,
+                        language: language,
+                        model: modelKey,
+                        initialPrompt: initialPrompt,
+                        aiCorrection: aiCorrection,
+                        chapters: chapters,
+                        deepseekBaseURL: deepseekBaseURL,
+                        deepseekModel: deepseekModel,
+                        deepseekAPIKey: apiKey
+                    )
+                    dismiss()
+                } catch {
+                    localError = error.localizedDescription
+                    isStarting = false
+                }
             }
         }
     }

@@ -23,10 +23,17 @@
     <aside class="sidebar">
       <section class="card upload-card">
         <div class="eyebrow">新建任务</div>
-        <h1>上传一次访谈</h1>
+        <h1>添加一次访谈</h1>
         <p class="muted">自动转写、分离说话人、整理段落，并生成可编辑的章节。</p>
 
         <form id="upload-form">
+          <label class="field">YouTube 链接
+            <input id="youtube-url" type="text" placeholder="https://www.youtube.com/watch?v=...">
+            <span class="hint">可选；只下载音频，不使用 YouTube 自带字幕</span>
+          </label>
+
+          <p class="muted small">或上传本地音频 / 视频：</p>
+
           <label class="dropzone" id="dropzone">
             <input type="file" id="file" accept="audio/*,video/*" hidden>
             <span class="drop-icon">＋</span>
@@ -97,10 +104,10 @@
       <div id="empty-state" class="empty">
         <div class="empty-orbit"><span>◎</span></div>
         <h2>把访谈变成可编辑的逐字稿</h2>
-        <p>上传音频后，Transcriptor 会在本机完成转写、说话人分离、段落整理和章节生成。</p>
+        <p>上传音频或粘贴 YouTube 链接后，Transcriptor 会在本机完成转写、说话人分离、段落整理和章节生成。</p>
         <div class="empty-points">
           <span>音频不上传云端</span>
-          <span>Markdown / Word 导出</span>
+          <span>Markdown / Word / SRT / VTT 导出</span>
           <span>说话人和章节可编辑</span>
         </div>
       </div>
@@ -115,6 +122,8 @@
           <div class="actions">
             <a id="dl-md" class="button" href="#">Markdown</a>
             <a id="dl-docx" class="button" href="#">Word</a>
+            <a id="dl-srt" class="button" href="#">SRT</a>
+            <a id="dl-vtt" class="button" href="#">VTT</a>
             <button id="delete-job" class="button danger">删除</button>
           </div>
         </div>

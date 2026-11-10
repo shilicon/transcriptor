@@ -32,10 +32,12 @@ from .config import (
     MAX_UPLOAD_BYTES,
     WHISPER_MODELS,
 )
-from .exporters import render_docx, render_markdown
+from .download import DownloadError, normalize_youtube_url
+from .exporters import render_docx, render_markdown, write_exports
 from .formatting import build_speakers, parse_speaker_names
 from .pipeline import run_pipeline
 from .secrets import set_job_secret
+from .subtitles import render_srt, render_vtt, sync_subtitle_segments
 from .utils import (
     clean_filename,
     format_duration,
@@ -121,6 +123,21 @@ class AutoChaptersRequest(BaseModel):
     title_language: str = Field(default="zh", pattern="^(zh|en)$")
 
 
+class URLJobRequest(BaseModel):
+    url: str
+    title: str = ""
+    speakers: str = "说话人 1, 说话人 2"
+    num_speakers: int = 2
+    language: str = "auto"
+    model: str = DEFAULT_WHISPER_MODEL
+    initial_prompt: str = ""
+    ai_correction: bool = DEFAULT_AI_CORRECTION
+    chapters: bool = DEFAULT_CHAPTERS
+    deepseek_base_url: str = DEFAULT_DEEPSEEK_BASE_URL
+    deepseek_model: str = DEFAULT_DEEPSEEK_MODEL
+    deepseek_api_key: str = ""
+
+
 def _public_job(job: dict[str, Any]) -> dict[str, Any]:
     keys = [
         "id", "title", "created_at", "started_at", "finished_at",
@@ -131,14 +148,64 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
     return {key: job.get(key) for key in keys}
 
 
+def _validate_job_options(num_speakers: int, model: str) -> None:
+    if num_speakers < 1 or num_speakers > 4:
+        raise HTTPException(status_code=400, detail="说话人数量需在 1–4 之间。")
+    if model not in WHISPER_MODELS:
+        raise HTTPException(status_code=400, detail="未知的语音模型。")
+
+
+def _build_job(
+    job_id: str,
+    title: str,
+    speakers: str,
+    num_speakers: int,
+    language: str,
+    model: str,
+    initial_prompt: str,
+    ai_correction: bool,
+    chapters: bool,
+    deepseek_base_url: str,
+    deepseek_model: str,
+    audio: dict[str, Any],
+    title_from_url: bool = False,
+) -> dict[str, Any]:
+    names = parse_speaker_names(speakers, num_speakers)
+    job: dict[str, Any] = {
+        "id": job_id,
+        "title": clean_filename(title or "访谈逐字稿", "访谈逐字稿"),
+        "created_at": now_iso(),
+        "status": "queued",
+        "stage": "排队中",
+        "progress": 0,
+        "error": None,
+        "audio": audio,
+        "settings": {
+            "language": language,
+            "num_speakers": num_speakers,
+            "model": model,
+            "initial_prompt": initial_prompt.strip(),
+            "ai_correction": bool(ai_correction),
+            "chapters": bool(chapters),
+            "deepseek_base_url": deepseek_base_url.strip() or DEFAULT_DEEPSEEK_BASE_URL,
+            "deepseek_model": deepseek_model.strip() or DEFAULT_DEEPSEEK_MODEL,
+        },
+        "speaker_names": names,
+        "speakers": build_speakers(names),
+        "segments": [],
+        "paragraphs": [],
+        "chapters": [],
+        "stats": {},
+    }
+    if title_from_url:
+        job["title_from_url"] = True
+    return job
+
+
 def _refresh_exports(job: dict[str, Any]) -> None:
     folder = job_dir(job["id"])
-    md_path = folder / "transcript.md"
-    docx_path = folder / "transcript.docx"
     try:
-        md_path.write_text(render_markdown(job), encoding="utf-8")
-        render_docx(job, docx_path)
-        job["exports"] = {"md": md_path.name, "docx": docx_path.name}
+        job["exports"] = write_exports(job, folder)
         job.pop("export_error", None)
     except Exception as exc:
         job["export_error"] = str(exc)
@@ -224,10 +291,7 @@ def create_job(
     deepseek_model: str = Form(DEFAULT_DEEPSEEK_MODEL),
     deepseek_api_key: str = Form(""),
 ) -> dict[str, str]:
-    if num_speakers < 1 or num_speakers > 4:
-        raise HTTPException(status_code=400, detail="说话人数量需在 1–4 之间。")
-    if model not in WHISPER_MODELS:
-        raise HTTPException(status_code=400, detail="未知的语音模型。")
+    _validate_job_options(num_speakers, model)
 
     original, stored_name = _safe_upload_name(file.filename or "audio")
     job_id = uuid.uuid4().hex[:10]
@@ -253,39 +317,68 @@ def create_job(
         shutil.rmtree(folder, ignore_errors=True)
         raise HTTPException(status_code=400, detail="上传的文件为空。")
 
-    names = parse_speaker_names(speakers, num_speakers)
-    job: dict[str, Any] = {
-        "id": job_id,
-        "title": clean_filename(title or Path(original).stem, "访谈逐字稿"),
-        "created_at": now_iso(),
-        "status": "queued",
-        "stage": "排队中",
-        "progress": 0,
-        "error": None,
-        "audio": {
+    job = _build_job(
+        job_id=job_id,
+        title=title or Path(original).stem,
+        speakers=speakers,
+        num_speakers=num_speakers,
+        language=language,
+        model=model,
+        initial_prompt=initial_prompt,
+        ai_correction=ai_correction,
+        chapters=chapters,
+        deepseek_base_url=deepseek_base_url,
+        deepseek_model=deepseek_model,
+        audio={
             "filename": original,
             "source_filename": stored_name,
             "duration": None,
             "size": size,
         },
-        "settings": {
-            "language": language,
-            "num_speakers": num_speakers,
-            "model": model,
-            "initial_prompt": initial_prompt.strip(),
-            "ai_correction": bool(ai_correction),
-            "chapters": bool(chapters),
-            "deepseek_base_url": deepseek_base_url.strip() or DEFAULT_DEEPSEEK_BASE_URL,
-            "deepseek_model": deepseek_model.strip() or DEFAULT_DEEPSEEK_MODEL,
-        },
-        "speaker_names": names,
-        "speakers": build_speakers(names),
-        "paragraphs": [],
-        "chapters": [],
-        "stats": {},
-    }
+    )
     if deepseek_api_key.strip():
         set_job_secret(job_id, "deepseek_api_key", deepseek_api_key.strip())
+    save_job(job)
+    executor.submit(run_pipeline, job_id)
+    return {"id": job_id}
+
+
+@app.post("/api/jobs/url")
+def create_job_from_url(payload: URLJobRequest) -> dict[str, str]:
+    try:
+        url = normalize_youtube_url(payload.url)
+    except DownloadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    _validate_job_options(payload.num_speakers, payload.model)
+
+    job_id = uuid.uuid4().hex[:10]
+    folder = job_dir(job_id)
+    folder.mkdir(parents=True, exist_ok=False)
+
+    job = _build_job(
+        job_id=job_id,
+        title=payload.title or "YouTube 视频",
+        speakers=payload.speakers,
+        num_speakers=payload.num_speakers,
+        language=payload.language,
+        model=payload.model,
+        initial_prompt=payload.initial_prompt,
+        ai_correction=payload.ai_correction,
+        chapters=payload.chapters,
+        deepseek_base_url=payload.deepseek_base_url,
+        deepseek_model=payload.deepseek_model,
+        audio={
+            "filename": url,
+            "source_filename": "",
+            "source_url": url,
+            "duration": None,
+            "size": 0,
+        },
+        title_from_url=not payload.title.strip(),
+    )
+    if payload.deepseek_api_key.strip():
+        set_job_secret(job_id, "deepseek_api_key", payload.deepseek_api_key.strip())
     save_job(job)
     executor.submit(run_pipeline, job_id)
     return {"id": job_id}
@@ -354,10 +447,18 @@ def update_paragraphs(job_id: str, payload: ParagraphsUpdate) -> dict[str, Any]:
     valid_speakers = {s["id"] for s in job.get("speakers", [])}
     if speaker_ids is not None and len(speaker_ids) != len(paragraphs):
         raise HTTPException(status_code=400, detail="说话人数量不一致，请刷新后重试。")
+    changed_ids: list[str] = []
     for index, (paragraph, text) in enumerate(zip(paragraphs, payload.texts)):
-        paragraph["text"] = text.strip()
+        new_text = text.strip()
+        new_speaker = paragraph.get("speaker_id")
         if speaker_ids and speaker_ids[index] in valid_speakers:
-            paragraph["speaker_id"] = speaker_ids[index]
+            new_speaker = speaker_ids[index]
+        if new_text != paragraph.get("text") or new_speaker != paragraph.get("speaker_id"):
+            changed_ids.append(str(paragraph.get("id") or ""))
+        paragraph["text"] = new_text
+        paragraph["speaker_id"] = new_speaker
+    if changed_ids:
+        sync_subtitle_segments(job, [item for item in changed_ids if item])
     job["paragraphs"] = paragraphs
     save_job(job)
     _refresh_exports(job)
@@ -424,13 +525,18 @@ def undo_correction(job_id: str) -> dict[str, Any]:
     if job.get("status") != "done":
         raise HTTPException(status_code=409, detail="任务还未完成。")
     changed = 0
+    changed_ids: list[str] = []
     for paragraph in job.get("paragraphs", []):
         original = paragraph.get("original_text")
         if original is not None and paragraph.get("text") != original:
             paragraph["text"] = original
             changed += 1
+            if paragraph.get("id"):
+                changed_ids.append(str(paragraph["id"]))
         paragraph.pop("correction_edits", None)
         paragraph["correction_status"] = "original"
+    if changed_ids:
+        sync_subtitle_segments(job, changed_ids)
     correction = job.setdefault("correction", {})
     correction["status"] = "undone"
     correction["applied"] = 0
@@ -467,6 +573,30 @@ def export_docx(job_id: str) -> FileResponse:
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=filename,
     )
+
+
+@app.get("/api/jobs/{job_id}/export.srt")
+def export_srt(job_id: str) -> FileResponse:
+    job = _require_job(job_id)
+    if job.get("status") != "done":
+        raise HTTPException(status_code=409, detail="任务还未完成。")
+    path = job_dir(job_id) / "transcript.srt"
+    if not path.exists():
+        path.write_text(render_srt(job), encoding="utf-8")
+    filename = f"{slugify(job.get('title') or '访谈逐字稿')}.srt"
+    return FileResponse(str(path), media_type="application/x-subrip", filename=filename)
+
+
+@app.get("/api/jobs/{job_id}/export.vtt")
+def export_vtt(job_id: str) -> FileResponse:
+    job = _require_job(job_id)
+    if job.get("status") != "done":
+        raise HTTPException(status_code=409, detail="任务还未完成。")
+    path = job_dir(job_id) / "transcript.vtt"
+    if not path.exists():
+        path.write_text(render_vtt(job), encoding="utf-8")
+    filename = f"{slugify(job.get('title') or '访谈逐字稿')}.vtt"
+    return FileResponse(str(path), media_type="text/vtt", filename=filename)
 
 
 @app.get("/")

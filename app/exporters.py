@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .subtitles import render_srt, render_vtt
 from .utils import format_duration, format_ts
 
 
@@ -236,3 +237,23 @@ def render_docx(job: dict[str, Any], output_path: Path) -> None:
     doc.core_properties.title = title
     doc.core_properties.subject = "访谈逐字稿"
     doc.save(str(output_path))
+
+
+def write_exports(job: dict[str, Any], folder: Path) -> dict[str, str]:
+    folder.mkdir(parents=True, exist_ok=True)
+    md_path = folder / "transcript.md"
+    docx_path = folder / "transcript.docx"
+    srt_path = folder / "transcript.srt"
+    vtt_path = folder / "transcript.vtt"
+
+    md_path.write_text(render_markdown(job), encoding="utf-8")
+    render_docx(job, docx_path)
+    srt_path.write_text(render_srt(job), encoding="utf-8")
+    vtt_path.write_text(render_vtt(job), encoding="utf-8")
+
+    return {
+        "md": md_path.name,
+        "docx": docx_path.name,
+        "srt": srt_path.name,
+        "vtt": vtt_path.name,
+    }

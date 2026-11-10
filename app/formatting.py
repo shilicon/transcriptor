@@ -132,12 +132,13 @@ def build_paragraphs(
             return
         text = clean_text(" ".join(current.pop("_texts")), language)
         current.pop("_sentences", None)
+        current["segment_indices"] = current.pop("_segment_indices", [])
         if text:
             current["text"] = text
             paragraphs.append(current)
         current = None
 
-    for segment, speaker in zip(segments, speaker_indices):
+    for index, (segment, speaker) in enumerate(zip(segments, speaker_indices)):
         start = float(segment["start"])
         end = float(segment["end"])
         text = (segment.get("text") or "").strip()
@@ -168,11 +169,13 @@ def build_paragraphs(
                 "end": end,
                 "_texts": [text],
                 "_sentences": sentence_count(text),
+                "_segment_indices": [index],
             }
         else:
             current["end"] = end
             current["_texts"].append(text)
             current["_sentences"] += sentence_count(text)
+            current["_segment_indices"].append(index)
 
     flush()
     return paragraphs

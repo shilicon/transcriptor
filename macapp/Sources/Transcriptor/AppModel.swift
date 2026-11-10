@@ -141,6 +141,40 @@ final class AppModel: ObservableObject {
         selectJob(id)
     }
 
+    func createJobFromURL(
+        url: String,
+        title: String,
+        speakers: String,
+        numSpeakers: Int,
+        language: String,
+        model: String,
+        initialPrompt: String,
+        aiCorrection: Bool,
+        chapters: Bool,
+        deepseekBaseURL: String,
+        deepseekModel: String,
+        deepseekAPIKey: String
+    ) async throws {
+        isBusy = true
+        defer { isBusy = false }
+        let id = try await api.createJobFromURL(
+            url: url,
+            title: title,
+            speakers: speakers,
+            numSpeakers: numSpeakers,
+            language: language,
+            model: model,
+            initialPrompt: initialPrompt,
+            aiCorrection: aiCorrection,
+            chapters: chapters,
+            deepseekBaseURL: deepseekBaseURL,
+            deepseekModel: deepseekModel,
+            deepseekAPIKey: deepseekAPIKey
+        )
+        await loadJobs()
+        selectJob(id)
+    }
+
     func refreshCurrentJob() async {
         guard let id = job?.id else { return }
         await loadJob(id)
@@ -258,6 +292,12 @@ final class AppModel: ObservableObject {
         } else if ext == "docx" {
             if let type = UTType(filenameExtension: "docx") {
                 panel.allowedContentTypes = [type]
+            }
+        } else if ext == "srt" || ext == "vtt" {
+            if let type = UTType(filenameExtension: ext) {
+                panel.allowedContentTypes = [type]
+            } else {
+                panel.allowedContentTypes = [.plainText]
             }
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }

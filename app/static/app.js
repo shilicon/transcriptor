@@ -223,6 +223,8 @@ function renderJob(job) {
   if (done) {
     $("#dl-md").href = `/api/jobs/${encodeURIComponent(job.id)}/export.md`;
     $("#dl-docx").href = `/api/jobs/${encodeURIComponent(job.id)}/export.docx`;
+    $("#dl-srt").href = `/api/jobs/${encodeURIComponent(job.id)}/export.srt`;
+    $("#dl-vtt").href = `/api/jobs/${encodeURIComponent(job.id)}/export.vtt`;
     renderSpeakers(job);
     setEditingUI();
     renderTranscript(job);
@@ -607,25 +609,44 @@ function setupUpload() {
 
   $("#upload-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!fileInput.files.length) {
-      toast("请先选择音频或视频文件", "error");
+    const youtubeUrl = $("#youtube-url").value.trim();
+    if (!youtubeUrl && !fileInput.files.length) {
+      toast("请选择音频文件，或粘贴 YouTube 链接", "error");
       return;
     }
-    const form = new FormData();
-    form.append("file", fileInput.files[0]);
-    form.append("title", $("#title").value.trim());
-    form.append("speakers", $("#speakers").value.trim());
-    form.append("num_speakers", $("#num-speakers").value);
-    form.append("language", $("#language").value);
-    form.append("model", $("#model").value);
-    form.append("initial_prompt", $("#initial-prompt").value.trim());
 
     const button = $("#start-btn");
     const original = button.textContent;
     button.disabled = true;
-    button.textContent = "上传中…";
+    button.textContent = youtubeUrl ? "下载中…" : "上传中…";
     try {
-      const result = await api("/api/jobs", { method: "POST", body: form });
+      let result;
+      if (youtubeUrl) {
+        const payload = {
+          url: youtubeUrl,
+          title: $("#title").value.trim(),
+          speakers: $("#speakers").value.trim(),
+          num_speakers: Number($("#num-speakers").value),
+          language: $("#language").value,
+          model: $("#model").value,
+          initial_prompt: $("#initial-prompt").value.trim(),
+        };
+        result = await api("/api/jobs/url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        const form = new FormData();
+        form.append("file", fileInput.files[0]);
+        form.append("title", $("#title").value.trim());
+        form.append("speakers", $("#speakers").value.trim());
+        form.append("num_speakers", $("#num-speakers").value);
+        form.append("language", $("#language").value);
+        form.append("model", $("#model").value);
+        form.append("initial_prompt", $("#initial-prompt").value.trim());
+        result = await api("/api/jobs", { method: "POST", body: form });
+      }
       toast("任务已创建，开始转写");
       await loadJobs();
       await selectJob(result.id);

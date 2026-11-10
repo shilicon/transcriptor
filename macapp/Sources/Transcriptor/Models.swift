@@ -25,6 +25,7 @@ struct Stats: Codable, Hashable {
 
 struct AudioInfo: Codable, Hashable {
     var filename: String?
+    var sourceUrl: String?
     var duration: Double?
     var size: Int64?
 }
@@ -168,6 +169,36 @@ struct AutoChaptersPayload: Codable {
         case endpoint
         case model
         case titleLanguage = "title_language"
+    }
+}
+
+struct URLJobPayload: Codable {
+    var url: String
+    var title: String
+    var speakers: String
+    var numSpeakers: Int
+    var language: String
+    var model: String
+    var initialPrompt: String
+    var aiCorrection: Bool
+    var chapters: Bool
+    var deepseekBaseUrl: String
+    var deepseekModel: String
+    var deepseekApiKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case title
+        case speakers
+        case language
+        case model
+        case chapters
+        case numSpeakers = "num_speakers"
+        case initialPrompt = "initial_prompt"
+        case aiCorrection = "ai_correction"
+        case deepseekBaseUrl = "deepseek_base_url"
+        case deepseekModel = "deepseek_model"
+        case deepseekApiKey = "deepseek_api_key"
     }
 }
 

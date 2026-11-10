@@ -28,4 +28,8 @@ if [ ! -d models/whisper-large-v3 ]; then
 fi
 
 chmod +x run.sh scripts/setup.sh 2>/dev/null || true
+if ! command -v deno >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+  echo
+  echo "提示：安装 Node.js 或 Deno 可提高 YouTube 链接下载兼容性。"
+fi
 echo "安装完成。运行：./run.sh"

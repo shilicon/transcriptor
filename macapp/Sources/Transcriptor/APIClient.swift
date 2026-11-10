@@ -217,4 +217,41 @@ struct APIClient {
         try check(response, data)
         return try decoder.decode(CreateJobResponse.self, from: data).id
     }
+
+    func createJobFromURL(
+        url: String,
+        title: String,
+        speakers: String,
+        numSpeakers: Int,
+        language: String,
+        model: String,
+        initialPrompt: String,
+        aiCorrection: Bool,
+        chapters: Bool,
+        deepseekBaseURL: String,
+        deepseekModel: String,
+        deepseekAPIKey: String
+    ) async throws -> String {
+        let payload = URLJobPayload(
+            url: url,
+            title: title,
+            speakers: speakers,
+            numSpeakers: numSpeakers,
+            language: language,
+            model: model,
+            initialPrompt: initialPrompt,
+            aiCorrection: aiCorrection,
+            chapters: chapters,
+            deepseekBaseUrl: deepseekBaseURL,
+            deepseekModel: deepseekModel,
+            deepseekApiKey: deepseekAPIKey
+        )
+        let response: CreateJobResponse = try await send(
+            "jobs/url",
+            method: "POST",
+            body: payload,
+            timeout: 120
+        )
+        return response.id
+    }
 }

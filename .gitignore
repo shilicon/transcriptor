@@ -19,3 +19,7 @@ data/test-server.log
 data/test-server.pid
 data/*.log
 data/*.pid
+
+# yt-dlp cookies（包含 YouTube 登录凭据，不要提交）
+cookies.txt
+youtube-cookies.txt

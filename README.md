@@ -1,18 +1,19 @@
 # Transcriptor
 
-原生 macOS 访谈转写应用（SwiftUI）：上传音频或视频，自动生成带说话人姓名、时间戳、章节的逐字稿，并导出 Markdown / Word。
+原生 macOS 访谈转写应用（SwiftUI）：上传音视频或粘贴 YouTube 链接，自动生成带说话人姓名、时间戳、章节的逐字稿，并导出 Markdown / Word / SRT / VTT。
 
 ## 功能
 
 - 音频只在本机处理，不上传云端
 - `mlx-whisper` 本地转写（默认 `large-v3`，可切换 `turbo`）
+- 支持本地音视频文件，或粘贴 YouTube 链接自动下载音频
 - Resemblyzer 声纹聚类，自动分离 1–4 位说话人
 - 按说话人合并连续发言，长回答自动分段
 - **默认启用 AI 校正**：用 DeepSeek V4.1 Flash 自动修正明显 ASR 错误，不改写、不润色、不补充内容
 - AI 校正可全局或按任务关闭；失败时保留原始转写，不降级到小模型
 - 自动分章默认开启，也可按任务关闭
 - 可在应用内修改逐字稿文字、说话人、章节标题和时间点
-- 导出 Markdown 和 Word（`.docx`）
+- 导出 Markdown、Word（`.docx`）和 SRT / VTT 字幕
 
 ## 安装与启动
 
@@ -60,7 +61,7 @@ open Transcriptor.app
 
 ## 使用流程
 
-1. 在 App 里点击“新建转写”，选择音频/视频。
+1. 在 App 里点击“新建转写”，选择音视频文件，或切换到 **YouTube 链接**。
 2. 填写标题、说话人姓名（按首次发言顺序，用逗号分隔）、说话人数和语言。
 3. 选择是否启用 **AI 校正**（默认开）和 **自动分章**（默认开）。
 4. 开始转写。窗口会显示转写、说话人分离、整理、AI 校正、章节、导出等阶段。
@@ -69,7 +70,22 @@ open Transcriptor.app
    - 在“说话人”里修正姓名；
    - 在“逐字稿”里编辑文字和逐段说话人；
    - 在“章节”里编辑时间点和标题；
-   - 导出 Markdown 或 Word。
+   - 导出 Markdown、Word 或 SRT / VTT 字幕。
+
+## 从 YouTube 链接转写
+
+在“新建任务”里选择 **YouTube 链接**，粘贴视频地址即可。后端会用 `yt-dlp` 只下载最佳音频流，然后走和本地文件相同的转写流程。
+
+- **不会下载 YouTube 自带字幕**，字幕完全由本地 `mlx-whisper` 转写生成
+- 支持 `youtube.com/watch`、`youtu.be`、Shorts、直播回放等单视频链接；播放列表链接只取第一个视频
+- `setup.sh` 会安装 `yt-dlp`；建议同时安装 Node.js 或 Deno，供 yt-dlp 处理 YouTube 播放器挑战
+- 如果视频需要登录验证，设置 `TRANSCRIPTOR_YTDLP_COOKIES` 指向导出的 cookies 文件
+- 网络需要代理时，设置 `TRANSCRIPTOR_YTDLP_PROXY`；yt-dlp 也会读取 `HTTPS_PROXY`
+- YouTube 风控规则经常变化，下载失败时可先升级：`uv pip install -U yt-dlp`
+
+原生 App 从 Finder 启动时不会继承终端环境变量。需要 cookies 或代理时，可以先在终端执行 `launchctl setenv TRANSCRIPTOR_YTDLP_COOKIES /path/to/cookies.txt`（代理同理），再重新打开 App；也可以直接从终端运行 `./Transcriptor.app/Contents/MacOS/Transcriptor`。
+
+SRT / VTT 字幕只包含转写文本，不包含说话人姓名，适合直接上传到视频平台。字幕时间点来自转写分段；在应用内修改逐字稿后，字幕文本会同步更新。
 
 ## AI 校正
 
@@ -155,6 +171,8 @@ data/jobs/<job-id>/
   job.json
   transcript.md
   transcript.docx
+  transcript.srt
+  transcript.vtt
 ```
 
 任务、转写结果和导出文件都保存在 `data/jobs`。删除 App 中的任务会同时删除该目录。
@@ -170,17 +188,21 @@ data/jobs/<job-id>/
 - `TRANSCRIPTOR_DEEPSEEK_MODEL`：DeepSeek 模型 ID
 - `TRANSCRIPTOR_AI_CORRECTION`：默认是否启用 AI 校正（`1` / `0`）
 - `TRANSCRIPTOR_CHAPTERS`：默认是否自动分章（`1` / `0`）
+- `TRANSCRIPTOR_YTDLP_PROXY`：下载 YouTube 音频时使用的代理
+- `TRANSCRIPTOR_YTDLP_COOKIES`：yt-dlp cookies 文件路径，用于需要登录的视频
 
 ## 实现结构
 
-- `app/main.py`：FastAPI 路由、上传、任务 API
+- `app/main.py`：FastAPI 路由、上传、YouTube 链接、任务 API
 - `app/pipeline.py`：转写 → 说话人分离 → 段落整理 → 章节 → 导出
+- `app/download.py`：yt-dlp 下载 YouTube 音频（不下载平台字幕）
 - `app/transcribe.py`：ffmpeg 提取音轨、`mlx-whisper` 转写
 - `app/diarize.py`：Resemblyzer 声纹嵌入 + KMeans 聚类
 - `app/formatting.py`：说话人合并、分段、文本清理、术语校正
+- `app/subtitles.py`：SRT / VTT 字幕生成与编辑同步
 - `app/correction.py`：DeepSeek 自动校正、局部修改校验、原稿保留
 - `app/chapters.py`：基础分章与 LLM 分章
-- `app/exporters.py`：Markdown / DOCX 导出
+- `app/exporters.py`：Markdown / DOCX / 字幕导出
 - `app/static/`、`app/templates/`：开发用浏览器界面
 - `macapp/Sources/Transcriptor/`：原生 SwiftUI App
 - `macapp/build_app.sh`：构建 `Transcriptor.app`

@@ -79,6 +79,11 @@ struct JobDetailView: View {
                         if let modelName = current.settings?.model {
                             Label(modelName, systemImage: "waveform")
                         }
+                        if let source = current.audio?.sourceUrl, let url = URL(string: source) {
+                            Link(destination: url) {
+                                Label("YouTube 来源", systemImage: "link")
+                            }
+                        }
                         if let correction = current.correction {
                             Label(correctionLabel(correction), systemImage: "checkmark.seal")
                         }
@@ -103,6 +108,20 @@ struct JobDetailView: View {
                             export("docx")
                         } label: {
                             Label("Word", systemImage: "doc.richtext")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!current.isDone)
+                    HStack(spacing: 7) {
+                        Button {
+                            export("srt")
+                        } label: {
+                            Label("SRT 字幕", systemImage: "captions.bubble")
+                        }
+                        Button {
+                            export("vtt")
+                        } label: {
+                            Label("VTT 字幕", systemImage: "text.bubble")
                         }
                     }
                     .buttonStyle(.bordered)
