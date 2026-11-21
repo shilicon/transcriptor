@@ -38,6 +38,50 @@ open Transcriptor.app
 
 重新构建 App 需要 Xcode / Swift 工具链。App 依赖仓库中的 `.venv` 和 `models/whisper-large-v3`，请从仓库内启动，不要单独移动 `.app`。
 
+## 命令行使用
+
+仓库根目录提供 `./transcriptor` 命令。它直接运行和 macOS App 相同的转写流水线，不需要先启动 Web 服务；任务完成后才返回。先查看全部选项：
+
+```bash
+./transcriptor --help
+```
+
+等价的 Python 调用是 `.venv/bin/python -m app.cli`。
+
+本地音视频文件的完整示例：
+
+```bash
+./transcriptor \
+  --file ./访谈.mp4 \
+  --title "产品访谈" \
+  --speakers "主持人,嘉宾" \
+  --num-speakers 2 \
+  --language zh \
+  --model large-v3 \
+  --initial-prompt "产品名：Transcriptor；人名：李明" \
+  --ai-correction \
+  --chapters \
+  --output-dir ./exports \
+  --output-name product-interview
+```
+
+YouTube 链接使用同一组选项：
+
+```bash
+./transcriptor \
+  --youtube "https://www.youtube.com/watch?v=..." \
+  --title "线上访谈" \
+  --speakers "主持人,嘉宾" \
+  --num-speakers 2 \
+  --language auto \
+  --no-ai-correction \
+  --chapters
+```
+
+命令行参数与 App 的“新建转写”字段对应：`--file` / `--youtube` 对应输入来源，`--title` 对应标题，`--speakers`、`--num-speakers`、`--language`、`--model` 和 `--initial-prompt` 对应表单字段，`--ai-correction` / `--no-ai-correction` 与 `--chapters` / `--no-chapters` 对应两个开关。DeepSeek 配置可以用 `--deepseek-base-url`、`--deepseek-model`、`--deepseek-api-key` 指定，也可以使用同名环境变量。
+
+默认导出文件保存在 `data/jobs/<job-id>/`，包括 Markdown、Word、SRT 和 VTT。加上 `--output-dir` 会在完成后把四种文件复制到指定目录；`--output-name` 可以指定它们的共同文件名。需要给其他脚本调用时可以加 `--json`，命令只输出最终任务摘要。
+
 ## 语音模型（mlx-whisper）
 
 转写由 [`mlx-whisper`](https://github.com/ml-explore/mlx-examples/tree/main/whisper) 在 Apple Silicon 上本地完成，音频不会离开本机。模型需要是 MLX 格式：
@@ -194,6 +238,8 @@ data/jobs/<job-id>/
 ## 实现结构
 
 - `app/main.py`：FastAPI 路由、上传、YouTube 链接、任务 API
+- `app/cli.py`：命令行任务入口
+- `app/job_setup.py`：App、API 和命令行共用的任务配置
 - `app/pipeline.py`：转写 → 说话人分离 → 段落整理 → 章节 → 导出
 - `app/download.py`：yt-dlp 下载 YouTube 音频（不下载平台字幕）
 - `app/transcribe.py`：ffmpeg 提取音轨、`mlx-whisper` 转写

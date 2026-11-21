@@ -34,12 +34,11 @@ from .config import (
 )
 from .download import DownloadError, normalize_youtube_url
 from .exporters import render_docx, render_markdown, write_exports
-from .formatting import build_speakers, parse_speaker_names
+from .job_setup import build_job, validate_job_options
 from .pipeline import run_pipeline
 from .secrets import set_job_secret
 from .subtitles import render_srt, render_vtt, sync_subtitle_segments
 from .utils import (
-    clean_filename,
     format_duration,
     job_dir,
     load_job,
@@ -149,10 +148,10 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_job_options(num_speakers: int, model: str) -> None:
-    if num_speakers < 1 or num_speakers > 4:
-        raise HTTPException(status_code=400, detail="说话人数量需在 1–4 之间。")
-    if model not in WHISPER_MODELS:
-        raise HTTPException(status_code=400, detail="未知的语音模型。")
+    try:
+        validate_job_options(num_speakers, model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _build_job(
@@ -170,36 +169,21 @@ def _build_job(
     audio: dict[str, Any],
     title_from_url: bool = False,
 ) -> dict[str, Any]:
-    names = parse_speaker_names(speakers, num_speakers)
-    job: dict[str, Any] = {
-        "id": job_id,
-        "title": clean_filename(title or "访谈逐字稿", "访谈逐字稿"),
-        "created_at": now_iso(),
-        "status": "queued",
-        "stage": "排队中",
-        "progress": 0,
-        "error": None,
-        "audio": audio,
-        "settings": {
-            "language": language,
-            "num_speakers": num_speakers,
-            "model": model,
-            "initial_prompt": initial_prompt.strip(),
-            "ai_correction": bool(ai_correction),
-            "chapters": bool(chapters),
-            "deepseek_base_url": deepseek_base_url.strip() or DEFAULT_DEEPSEEK_BASE_URL,
-            "deepseek_model": deepseek_model.strip() or DEFAULT_DEEPSEEK_MODEL,
-        },
-        "speaker_names": names,
-        "speakers": build_speakers(names),
-        "segments": [],
-        "paragraphs": [],
-        "chapters": [],
-        "stats": {},
-    }
-    if title_from_url:
-        job["title_from_url"] = True
-    return job
+    return build_job(
+        job_id=job_id,
+        title=title,
+        speakers=speakers,
+        num_speakers=num_speakers,
+        language=language,
+        model=model,
+        initial_prompt=initial_prompt,
+        ai_correction=ai_correction,
+        chapters=chapters,
+        deepseek_base_url=deepseek_base_url,
+        deepseek_model=deepseek_model,
+        audio=audio,
+        title_from_url=title_from_url,
+    )
 
 
 def _refresh_exports(job: dict[str, Any]) -> None:
