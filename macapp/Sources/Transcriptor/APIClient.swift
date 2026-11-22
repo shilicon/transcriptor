@@ -168,6 +168,16 @@ struct APIClient {
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
 
+        // URLs returned by SwiftUI's fileImporter can be security-scoped.
+        // Keep the access scope alive while the selected file is read; without
+        // this, Data(contentsOf:) can fail before the POST request is created.
+        let accessedSecurityScopedResource = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessedSecurityScopedResource {
+                fileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
         func append(_ string: String) {
             body.append(string.data(using: .utf8) ?? Data())
         }
@@ -207,7 +217,11 @@ struct APIClient {
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
         append("Content-Type: \(mime)\r\n\r\n")
-        body.append(try Data(contentsOf: fileURL, options: .mappedIfSafe))
+        do {
+            body.append(try Data(contentsOf: fileURL, options: .mappedIfSafe))
+        } catch {
+            throw APIError(message: "无法读取所选文件：\(error.localizedDescription)")
+        }
         append("\r\n--\(boundary)--\r\n")
 
         var req = request(path: "jobs", method: "POST", timeout: 600)

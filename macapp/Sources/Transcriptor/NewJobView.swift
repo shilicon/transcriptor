@@ -204,7 +204,7 @@ struct NewJobView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "key")
                                     .foregroundStyle(.orange)
-                                Text("还没有配置 DeepSeek API Key。可以先打开设置，或关闭 AI 校正。")
+                                Text("还没有配置 DeepSeek API Key。任务仍会继续转写，AI 校正不会应用；也可以先打开设置配置。")
                                     .font(.caption)
                                 Spacer()
                                 Button("打开设置") { openSettings() }
@@ -373,10 +373,6 @@ struct NewJobView: View {
 
     private func start() {
         let apiKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
-        if aiCorrection && apiKey.isEmpty && !(model.config?.deepseekConfigured ?? false) {
-            localError = "请先在设置中填写 DeepSeek API Key，或关闭 AI 校正。"
-            return
-        }
 
         switch sourceMode {
         case .file:
