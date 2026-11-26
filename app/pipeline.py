@@ -21,8 +21,9 @@ from .correction import (
 from .diarize import diarize_segments
 from .download import download_audio
 from .exporters import write_exports
-from .formatting import build_paragraphs, build_speakers
+from .formatting import build_paragraphs, build_speakers, split_segments_at_sentences
 from .secrets import pop_job_secrets
+from .segmentation import SegmentationError, semantic_paragraph_breaks
 from .subtitles import sync_subtitle_segments
 from .transcribe import extract_audio, probe_duration, transcribe
 from .utils import (
@@ -182,16 +183,56 @@ def run_pipeline(job_id: str) -> None:
             speaker_id = f"S{int(speaker) + 1}"
             raw["speaker_id"] = speaker_id
             subtitle["speaker_id"] = speaker_id
+        # Whisper segments often end mid-sentence.  Split subtitle segments at
+        # sentence boundaries so paragraph building can honor the ~10 sentence
+        # design rule instead of accumulating a whole speaker turn.
+        subtitle_segments = split_segments_at_sentences(subtitle_segments)
         job["raw_segments"] = raw_segments
         job["segments"] = subtitle_segments
         _commit(job, {"speakers", "raw_segments", "segments"})
 
-        _update(job, "正在整理逐字稿", 80)
+        secrets = pop_job_secrets(job_id)
+        api_key = (
+            secrets.get("deepseek_api_key")
+            or os.environ.get("TRANSCRIPTOR_DEEPSEEK_API_KEY")
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or ""
+        )
+        base_url = (
+            job["settings"].get("deepseek_base_url")
+            or DEFAULT_DEEPSEEK_BASE_URL
+        )
+        model = (
+            job["settings"].get("deepseek_model")
+            or DEFAULT_DEEPSEEK_MODEL
+        )
+
+        ai_correction = bool(job["settings"].get("ai_correction", True))
+        semantic_breaks: set[int] | None = None
+        if api_key and ai_correction:
+            _update(job, "正在 AI 语义分段", 82)
+            try:
+                semantic_breaks = semantic_paragraph_breaks(
+                    subtitle_segments,
+                    api_key=api_key,
+                    base_url=base_url,
+                    model=model,
+                )
+            except SegmentationError as exc:
+                # Semantic segmentation is an enhancement; never fail the
+                # whole transcription because the model is unavailable.
+                print(f"[transcriptor] AI 语义分段回退：{exc}")
+        _update(job, "正在整理逐字稿", 84)
+        paragraph_speaker_indices = [
+            int(segment["speaker_id"][1:]) - 1
+            for segment in subtitle_segments
+        ]
         paragraphs = build_paragraphs(
-            segments,
-            speaker_indices,
+            subtitle_segments,
+            paragraph_speaker_indices,
             language=job["settings"].get("language"),
             glossary=bool(job["settings"].get("glossary", False)),
+            break_before=semantic_breaks,
         )
         for index, paragraph in enumerate(paragraphs, start=1):
             paragraph["id"] = f"p{index:04d}"
@@ -209,7 +250,6 @@ def run_pipeline(job_id: str) -> None:
         }
         _commit(job, {"paragraphs", "stats"})
 
-        ai_correction = bool(job["settings"].get("ai_correction", True))
         chapters_enabled = bool(job["settings"].get("chapters", True))
         job["correction"] = {
             "enabled": ai_correction,
@@ -224,21 +264,14 @@ def run_pipeline(job_id: str) -> None:
 
         if ai_correction:
             _update(job, "正在 AI 校正", 88)
-            secrets = pop_job_secrets(job_id)
-            api_key = (
-                secrets.get("deepseek_api_key")
-                or os.environ.get("TRANSCRIPTOR_DEEPSEEK_API_KEY")
-                or os.environ.get("DEEPSEEK_API_KEY")
-                or ""
-            )
             speakers_map = {speaker["id"]: speaker["name"] for speaker in job["speakers"]}
             try:
                 result = correct_paragraphs(
                     paragraphs=paragraphs,
                     speakers=speakers_map,
                     api_key=api_key,
-                    base_url=job["settings"].get("deepseek_base_url") or DEFAULT_DEEPSEEK_BASE_URL,
-                    model=job["settings"].get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL,
+                    base_url=base_url,
+                    model=model,
                     progress=lambda stage, pct: _update(job, stage, pct),
                     should_cancel=lambda: is_job_deleted(job_id),
                 )

@@ -28,6 +28,7 @@ from app.utils import (
     job_dir,
     load_job,
     save_job,
+    sentence_count,
 )
 from tests.support import isolated_jobs_dir, make_job
 
@@ -349,6 +350,124 @@ class CorruptJobTests(unittest.TestCase):
             self.assertNotIn("raw_text", paragraph)
             self.assertEqual(paragraph["formatted_text"], paragraph["original_text"])
             self.assertFalse(paragraph["manual_edited"])
+
+
+class ParagraphFormattingPipelineTests(unittest.TestCase):
+    def test_pipeline_caps_long_speaker_turns_near_ten_sentences(self):
+        with isolated_jobs_dir():
+            job_id = "format-pipeline"
+            save_job(make_job(job_id, "queued"))
+            job_dir(job_id).mkdir(parents=True, exist_ok=True)
+            (job_dir(job_id) / "input.wav").write_bytes(b"synthetic")
+
+            segments = [
+                {
+                    "start": index * 15.0,
+                    "end": index * 15.0 + 14.0,
+                    "text": (
+                        "Alpha one. Beta two. Gamma three. "
+                        "This fragment continues"
+                    ),
+                }
+                for index in range(12)
+            ]
+            with (
+                patch.object(pipeline, "probe_duration", return_value=180),
+                patch.object(pipeline, "extract_audio"),
+                patch.object(pipeline, "transcribe", return_value=segments),
+                patch.object(
+                    pipeline,
+                    "diarize_segments",
+                    return_value=([0] * len(segments), 1),
+                ),
+            ):
+                pipeline.run_pipeline(job_id)
+
+            job = load_job(job_id)
+            self.assertEqual(job["status"], "done")
+            self.assertGreater(len(job["segments"]), len(segments))
+            self.assertGreater(len(job["paragraphs"]), 1)
+            self.assertTrue(
+                all(
+                    sentence_count(paragraph["text"]) <= 10
+                    for paragraph in job["paragraphs"]
+                )
+            )
+
+    def test_pipeline_uses_ai_semantic_breaks(self):
+        with isolated_jobs_dir():
+            job_id = "format-ai"
+            job = make_job(job_id, "queued")
+            job["settings"]["ai_correction"] = True
+            save_job(job)
+            job_dir(job_id).mkdir(parents=True, exist_ok=True)
+            (job_dir(job_id) / "input.wav").write_bytes(b"synthetic")
+
+            segments = [
+                {
+                    "start": index * 15.0,
+                    "end": index * 15.0 + 14.0,
+                    "text": (
+                        "Alpha one. Beta two. Gamma three. "
+                        "This fragment continues"
+                    ),
+                }
+                for index in range(12)
+            ]
+            captured = {}
+
+            def fake_plan(sentence_segments, **kwargs):
+                captured["count"] = len(sentence_segments)
+                captured["api_key"] = kwargs.get("api_key")
+                return {
+                    index
+                    for index in range(5, len(sentence_segments), 5)
+                }
+
+            with (
+                patch.object(pipeline, "probe_duration", return_value=180),
+                patch.object(pipeline, "extract_audio"),
+                patch.object(pipeline, "transcribe", return_value=segments),
+                patch.object(
+                    pipeline,
+                    "diarize_segments",
+                    return_value=([0] * len(segments), 1),
+                ),
+                patch.object(
+                    pipeline,
+                    "pop_job_secrets",
+                    return_value={"deepseek_api_key": "sk-synthetic"},
+                ),
+                patch.object(
+                    pipeline,
+                    "semantic_paragraph_breaks",
+                    side_effect=fake_plan,
+                ),
+                patch.object(
+                    pipeline,
+                    "correct_paragraphs",
+                    return_value={
+                        "applied": 0,
+                        "rejected": 0,
+                        "batches": 0,
+                        "errors": [],
+                        "model": "test",
+                    },
+                ),
+            ):
+                pipeline.run_pipeline(job_id)
+
+            job = load_job(job_id)
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(captured["api_key"], "sk-synthetic")
+            self.assertGreater(captured["count"], len(segments))
+            self.assertGreater(len(job["paragraphs"]), 1)
+            self.assertTrue(
+                all(
+                    sentence_count(paragraph["text"]) <= 6
+                    for paragraph in job["paragraphs"]
+                )
+            )
 
 
 class ChapterConcurrencyTests(unittest.TestCase):

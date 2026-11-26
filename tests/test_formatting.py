@@ -6,7 +6,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.formatting import build_paragraphs, clean_text
+from app.formatting import (
+    TARGET_SENTENCES_PER_PARAGRAPH,
+    build_paragraphs,
+    clean_text,
+    split_segments_at_sentences,
+    split_sentences,
+)
+from app.utils import sentence_count
 
 
 class FormattingSafetyTests(unittest.TestCase):
@@ -67,6 +74,66 @@ class FormattingSafetyTests(unittest.TestCase):
             "en",
         )
         self.assertEqual(paragraphs[0]["segment_indices"], [0, 1])
+
+    def test_sentence_split_handles_chinese_punctuation_and_decimals(self):
+        self.assertEqual(
+            split_sentences("中文第一句。中文第二句！还有吗？"),
+            ["中文第一句。", "中文第二句！", "还有吗？"],
+        )
+        self.assertEqual(
+            split_sentences("The value is 3.5. Next sentence."),
+            ["The value is 3.5.", "Next sentence."],
+        )
+
+    def test_split_segments_at_sentences_preserves_text_and_timing(self):
+        original = {
+            "start": 10.0,
+            "end": 20.0,
+            "text": "First sentence. Second sentence. A trailing fragment",
+            "speaker_id": "S1",
+        }
+        split = split_segments_at_sentences([original])
+        self.assertEqual(
+            [segment["text"] for segment in split],
+            ["First sentence.", "Second sentence.", "A trailing fragment"],
+        )
+        self.assertTrue(all(segment["speaker_id"] == "S1" for segment in split))
+        self.assertEqual(split[0]["start"], 10.0)
+        self.assertEqual(split[-1]["end"], 20.0)
+        self.assertTrue(
+            all(
+                left["end"] <= right["start"] + 0.001
+                for left, right in zip(split, split[1:])
+            )
+        )
+
+    def test_long_speaker_turn_stays_near_ten_sentences(self):
+        segments = []
+        for index in range(12):
+            segments.append(
+                {
+                    "start": index * 15.0,
+                    "end": index * 15.0 + 14.0,
+                    "text": (
+                        "Alpha one. Beta two. Gamma three. "
+                        "This fragment continues"
+                    ),
+                    "speaker_id": "S1",
+                }
+            )
+        split = split_segments_at_sentences(segments)
+        paragraphs = build_paragraphs(split, [0] * len(split), "en")
+        self.assertGreater(len(paragraphs), 1)
+        self.assertTrue(
+            all(
+                sentence_count(paragraph["text"])
+                <= TARGET_SENTENCES_PER_PARAGRAPH
+                for paragraph in paragraphs
+            )
+        )
+        self.assertTrue(
+            all(paragraph["speaker"] == 0 for paragraph in paragraphs)
+        )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ from .utils import sentence_count
 
 SPEAKER_COLORS = ["#0f766e", "#b45309", "#1d4ed8", "#9d174d"]
 
+# Design rule: a transcript paragraph should contain roughly ten sentences.
+# Paragraphs never mix speakers, so short speaker turns remain short, but a
+# long turn must be split instead of becoming one giant block.
+TARGET_SENTENCES_PER_PARAGRAPH = 10
+
 # Common ASR variants seen in Cadence/EDA interviews.  These are intentionally
 # conservative: only replace forms that are very unlikely to be ordinary words.
 GLOSSARY: list[tuple[str, str | Callable[[re.Match[str]], str]]] = [
@@ -107,6 +112,71 @@ def build_speakers(names: list[str]) -> list[dict[str, str]]:
     ]
 
 
+_SENTENCE_RE = re.compile(
+    r".*?(?:[!?。！？]+|\.(?!\d))[\"')\]]*(?=\s|$|[\u4e00-\u9fffA-Z])",
+    re.DOTALL,
+)
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split ASR text into sentence-sized chunks, keeping punctuation."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    sentences: list[str] = []
+    consumed = 0
+    for match in _SENTENCE_RE.finditer(text):
+        sentence = match.group(0).strip()
+        if sentence:
+            sentences.append(sentence)
+        consumed = match.end()
+    remainder = text[consumed:].strip()
+    if remainder:
+        sentences.append(remainder)
+    return sentences
+
+
+def split_segments_at_sentences(
+    segments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Split Whisper segments at sentence boundaries.
+
+    Whisper often emits fragments that end mid-sentence.  Splitting here
+    gives paragraph building real sentence boundaries to work with, while
+    timestamps are apportioned by character length.
+    """
+    result: list[dict[str, Any]] = []
+    for segment in segments:
+        text = str(segment.get("text") or "").strip()
+        sentences = split_sentences(text)
+        if len(sentences) <= 1:
+            result.append(dict(segment))
+            continue
+
+        start = float(segment.get("start") or 0)
+        end = float(segment.get("end") or start)
+        if end <= start:
+            end = start + 0.2
+        span = end - start
+        total_chars = sum(len(sentence) for sentence in sentences) or len(sentences)
+        cursor = start
+        consumed = 0
+        for index, sentence in enumerate(sentences):
+            consumed += len(sentence)
+            if index == len(sentences) - 1:
+                chunk_end = end
+            else:
+                chunk_end = start + span * consumed / total_chars
+                chunk_end = min(end, max(cursor, chunk_end))
+            chunk = dict(segment)
+            chunk["start"] = cursor
+            chunk["end"] = chunk_end
+            chunk["text"] = sentence
+            result.append(chunk)
+            cursor = chunk_end
+    return result
+
+
 def _ends_sentence(text: str) -> bool:
     return bool(re.search(r"[.!?。！？][\"')\]]?$", (text or "").strip()))
 
@@ -119,12 +189,21 @@ def build_paragraphs(
     segments: list[dict[str, Any]],
     speaker_indices: list[int],
     language: str | None = None,
-    max_sentences: int = 10,
+    max_sentences: int = TARGET_SENTENCES_PER_PARAGRAPH,
     max_duration: float = 120.0,
     pause_split: float = 5.0,
     glossary: bool = False,
+    break_before: set[int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Merge consecutive segments by speaker and split very long turns.
+    """Merge consecutive segments by speaker and split long turns.
+
+    Design rule: keep paragraphs around ``TARGET_SENTENCES_PER_PARAGRAPH``
+    sentences and never mix speakers.  Call ``split_segments_at_sentences``
+    before this function when segments come straight from Whisper, otherwise
+    fragments that end mid-sentence can defeat the sentence limit.
+
+    When ``break_before`` is provided it is an AI semantic plan: those segment
+    indices start new paragraphs, and the sentence-count heuristic is skipped.
 
     ``raw_text`` is the untouched ASR text for the paragraph.  ``text`` and
     ``formatted_text`` contain the deterministic formatting result.  Domain
@@ -160,6 +239,8 @@ def build_paragraphs(
         if current is not None:
             if speaker != current["speaker"]:
                 should_split = True
+            elif break_before is not None:
+                should_split = index in break_before
             else:
                 previous_text = current["_texts"][-1] if current["_texts"] else ""
                 reached_limit = (
