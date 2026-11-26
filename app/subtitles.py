@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any, Iterator
 
+from .translation import translation_languages, translation_texts
+
 MAX_SUBTITLE_CHARS = 42
 BREAK_CHARS = "，。！？；、,.!?;:： "
 _EPSILON = 0.01
@@ -10,6 +12,14 @@ _EPSILON = 0.01
 
 def _clean(text: Any) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def _clean_multiline(text: Any) -> str:
+    return "\n".join(
+        line
+        for line in (_clean(part) for part in str(text or "").splitlines())
+        if line
+    )
 
 
 def _split_text(text: str, max_chars: int = MAX_SUBTITLE_CHARS) -> list[str]:
@@ -144,6 +154,107 @@ def subtitle_lines(job: dict[str, Any]) -> list[tuple[float, float, str, str]]:
     return lines
 
 
+def _bilingual_subtitle_lines(
+    job: dict[str, Any],
+) -> list[tuple[float, float, str, str]] | None:
+    """Build subtitle lines with the original text and available translations."""
+    translations = job.get("translations")
+    if not isinstance(translations, dict) or not translations:
+        return None
+    languages = translation_languages(job)
+    if not languages:
+        return None
+
+    paragraphs = job.get("paragraphs") or []
+    segments = job.get("segments") or []
+    translated_by_segment: dict[int, list[str]] = {}
+
+    if isinstance(segments, list) and segments:
+        for paragraph in paragraphs:
+            if not isinstance(paragraph, dict):
+                continue
+            items = translation_texts(job, paragraph, languages)
+            if not items:
+                continue
+            indices = paragraph.get("segment_indices")
+            if not isinstance(indices, list) or not indices:
+                continue
+            group: list[tuple[int, str]] = []
+            for index in indices:
+                if isinstance(index, int) and 0 <= index < len(segments):
+                    segment = segments[index]
+                    if isinstance(segment, dict):
+                        group.append((index, _clean(segment.get("text"))))
+            if not group:
+                continue
+            weights = [max(1, len(text)) for _, text in group]
+            for _, translated in items:
+                for (index, _), chunk in zip(
+                    group,
+                    _split_by_weights(translated, weights),
+                ):
+                    chunk = _clean(chunk)
+                    if chunk:
+                        translated_by_segment.setdefault(index, []).append(chunk)
+
+        if translated_by_segment:
+            translated_lines: list[tuple[float, float, str, str]] = []
+            ordered = sorted(
+                enumerate(segments),
+                key=lambda item: (
+                    float(item[1].get("start") or 0)
+                    if isinstance(item[1], dict)
+                    else 0.0
+                ),
+            )
+            for index, segment in ordered:
+                if not isinstance(segment, dict):
+                    continue
+                text = _clean(segment.get("text"))
+                if not text:
+                    continue
+                translated = translated_by_segment.get(index) or []
+                if translated:
+                    text = "\n".join([text] + translated)
+                translated_lines.append(
+                    (
+                        float(segment.get("start") or 0),
+                        float(segment.get("end") or 0),
+                        text,
+                        str(segment.get("speaker_id") or ""),
+                    )
+                )
+            if translated_lines:
+                return translated_lines
+
+    # Paragraph fallback for jobs without segment data.
+    paragraph_lines: list[tuple[float, float, str, str]] = []
+    has_translation = False
+    for paragraph in sorted(
+        paragraphs,
+        key=lambda item: (
+            float(item.get("start") or 0) if isinstance(item, dict) else 0.0
+        ),
+    ):
+        if not isinstance(paragraph, dict):
+            continue
+        text = _clean(paragraph.get("text"))
+        if not text:
+            continue
+        items = translation_texts(job, paragraph, languages)
+        if items:
+            has_translation = True
+            text = "\n".join([text] + [translated for _, translated in items])
+        start = max(0.0, float(paragraph.get("start") or 0))
+        end = float(paragraph.get("end") if paragraph.get("end") is not None else start)
+        if end <= start:
+            end = start + max(0.8, len(text) * 0.12)
+        paragraph_lines.append(
+            (start, end, text, str(paragraph.get("speaker_id") or ""))
+        )
+    return paragraph_lines if has_translation else None
+
+
 def _timestamp(seconds: float, separator: str) -> str:
     milliseconds = int(round(max(0.0, float(seconds)) * 1000))
     hours, remainder = divmod(milliseconds, 3_600_000)
@@ -160,11 +271,11 @@ def _speaker_name(job: dict[str, Any], speaker_id: str) -> str:
 
 
 def render_srt(job: dict[str, Any], include_speakers: bool = False) -> str:
-    lines = subtitle_lines(job)
+    lines = _bilingual_subtitle_lines(job) or subtitle_lines(job)
     output: list[str] = []
     index = 1
     for start, end, text, speaker_id in lines:
-        text = _clean(text)
+        text = _clean_multiline(text)
         if not text:
             continue
         if include_speakers:
@@ -185,8 +296,10 @@ def render_srt(job: dict[str, Any], include_speakers: bool = False) -> str:
 
 def render_vtt(job: dict[str, Any], include_speakers: bool = False) -> str:
     output: list[str] = ["WEBVTT", ""]
-    for start, end, text, speaker_id in subtitle_lines(job):
-        text = _clean(text)
+    for start, end, text, speaker_id in (
+        _bilingual_subtitle_lines(job) or subtitle_lines(job)
+    ):
+        text = _clean_multiline(text)
         if not text:
             continue
         if include_speakers:

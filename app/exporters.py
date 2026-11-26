@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .subtitles import render_srt, render_vtt
+from .translation import translation_languages, translation_texts
 from .utils import format_duration, format_ts
 
 
@@ -89,6 +90,9 @@ def _metadata_lines(job: dict[str, Any]) -> list[tuple[str, str]]:
     correction = _correction_line(job)
     if correction:
         lines.append(correction)
+    languages = translation_languages(job)
+    if languages:
+        lines.append(("译文：", "、".join(languages) + "，原文下方同步显示。"))
     if not (job.get("settings") or {}).get("chapters", True):
         lines.append(("自动分章：", "未启用。"))
     return lines
@@ -113,6 +117,8 @@ def render_markdown(job: dict[str, Any]) -> str:
                 paragraph.get("text", "").strip(),
                 "",
             ]
+            for _, translated in translation_texts(job, paragraph):
+                lines += [f"> {translated}", ""]
     lines += ["---", "", "*（全片完）*", ""]
     return "\n".join(lines)
 
@@ -228,6 +234,18 @@ def render_docx(job: dict[str, Any], output_path: Path) -> None:
             _set_cell_font(run, size=10.5, bold=True, color=RGBColor(0x33, 0x33, 0x33))
             body = doc.add_paragraph(paragraph.get("text", "").strip())
             body.paragraph_format.space_after = Pt(5)
+            for _, translated in translation_texts(job, paragraph):
+                translated_paragraph = doc.add_paragraph()
+                translated_paragraph.paragraph_format.space_after = Pt(4)
+                translated_paragraph.paragraph_format.left_indent = Inches(0.2)
+                run = translated_paragraph.add_run(translated)
+                _set_cell_font(
+                    run,
+                    size=10,
+                    bold=False,
+                    color=RGBColor(0x55, 0x55, 0x55),
+                )
+                run.italic = True
 
     _add_hr(doc)
     end = doc.add_paragraph()

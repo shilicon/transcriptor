@@ -3,6 +3,11 @@ import Combine
 import Foundation
 import UniformTypeIdentifiers
 
+struct ExportDestination {
+    let url: URL
+    let includeTranslation: Bool
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
@@ -536,14 +541,27 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func exportData(_ ext: String) async throws -> Data {
+    func exportData(
+        _ ext: String,
+        includeTranslation: Bool,
+        translationLanguage: String?
+    ) async throws -> Data {
         guard let id = job?.id, selectedJobId == id else {
             throw APIError(message: "没有选中的任务。")
         }
-        return try await api.export(id, extension: ext)
+        return try await api.export(
+            id,
+            extension: ext,
+            includeTranslation: includeTranslation,
+            translationLanguage: translationLanguage
+        )
     }
 
-    func saveExport(_ data: Data, suggestedName: String, ext: String) throws {
+    func chooseExportDestination(
+        suggestedName: String,
+        ext: String,
+        translationLanguage: String?
+    ) -> ExportDestination? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(suggestedName).\(ext)"
         panel.canCreateDirectories = true
@@ -564,7 +582,46 @@ final class AppModel: ObservableObject {
                 panel.allowedContentTypes = [.plainText]
             }
         }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        var translationCheckbox: NSButton?
+        if let translationLanguage, !translationLanguage.isEmpty {
+            let container = NSView(
+                frame: NSRect(x: 0, y: 0, width: 360, height: 44)
+            )
+            let checkbox = NSButton(
+                checkboxWithTitle: "包含译文（\(translationLanguage)）",
+                target: nil,
+                action: nil
+            )
+            checkbox.frame = NSRect(x: 12, y: 10, width: 336, height: 22)
+            checkbox.toolTip = "取消勾选则只导出原文"
+            let defaults = UserDefaults.standard
+            let include = defaults.object(
+                forKey: "export.includeTranslation"
+            ) as? Bool ?? true
+            checkbox.state = include ? .on : .off
+            container.addSubview(checkbox)
+            panel.accessoryView = container
+            translationCheckbox = checkbox
+        }
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return nil
+        }
+        let includeTranslation = translationCheckbox?.state == .on
+        if translationCheckbox != nil {
+            UserDefaults.standard.set(
+                includeTranslation,
+                forKey: "export.includeTranslation"
+            )
+        }
+        return ExportDestination(
+            url: url,
+            includeTranslation: includeTranslation
+        )
+    }
+
+    func writeExport(_ data: Data, to url: URL) throws {
         try data.write(to: url, options: .atomic)
     }
 }

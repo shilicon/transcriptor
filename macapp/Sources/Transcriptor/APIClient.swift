@@ -16,8 +16,18 @@ struct APIClient {
         return encoder
     }
 
-    private func request(path: String, method: String = "GET", timeout: TimeInterval = 30) -> URLRequest {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+    private func request(
+        path: String,
+        method: String = "GET",
+        timeout: TimeInterval = 30,
+        queryItems: [URLQueryItem] = []
+    ) -> URLRequest {
+        let base = baseURL.appendingPathComponent(path)
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+        }
+        var request = URLRequest(url: components?.url ?? base)
         request.httpMethod = method
         request.timeoutInterval = timeout
         if let token, !token.isEmpty {
@@ -171,8 +181,33 @@ struct APIClient {
         return try decoder.decode(Job.self, from: data)
     }
 
-    func export(_ id: String, extension ext: String) async throws -> Data {
-        let req = request(path: "jobs/\(id)/export.\(ext)", timeout: 120)
+    func export(
+        _ id: String,
+        extension ext: String,
+        includeTranslation: Bool,
+        translationLanguage: String?
+    ) async throws -> Data {
+        var queryItems = [
+            URLQueryItem(
+                name: "include_translation",
+                value: includeTranslation ? "true" : "false"
+            )
+        ]
+        if includeTranslation,
+           let translationLanguage,
+           !translationLanguage.isEmpty {
+            queryItems.append(
+                URLQueryItem(
+                    name: "translation_language",
+                    value: translationLanguage
+                )
+            )
+        }
+        let req = request(
+            path: "jobs/\(id)/export.\(ext)",
+            timeout: 120,
+            queryItems: queryItems
+        )
         let (data, response) = try await URLSession.shared.data(for: req)
         try check(response, data)
         return data

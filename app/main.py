@@ -759,6 +759,7 @@ async def translate(job_id: str, payload: TranslateRequest) -> dict[str, Any]:
             "texts": texts,
         }
         job["translations"] = translations
+        _write_exports_in_place(job)
 
     return _public_job(_mutate_or_http(job_id, apply))
 
@@ -798,12 +799,36 @@ def undo_correction(job_id: str) -> dict[str, Any]:
     return _public_job(_mutate_or_http(job_id, apply))
 
 
-def _prepare_export(job_id: str, extension: str) -> tuple[dict[str, Any], Path]:
+def _prepare_export(
+    job_id: str,
+    extension: str,
+    include_translation: bool = True,
+    translation_language: str | None = None,
+) -> tuple[dict[str, Any], Path]:
     with job_lock(job_id):
         job = _require_job(job_id)
         _require_done(job)
+        export_job = job
+        language = (translation_language or "").strip()
+        if not include_translation:
+            export_job = copy.deepcopy(job)
+            export_job["translations"] = {}
+        elif language:
+            translations = job.get("translations")
+            entry = (
+                translations.get(language)
+                if isinstance(translations, dict)
+                else None
+            )
+            if not isinstance(entry, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"没有“{language}”译文，无法导出。",
+                )
+            export_job = copy.deepcopy(job)
+            export_job["translations"] = {language: entry}
         try:
-            write_exports(job, job_dir(job_id))
+            write_exports(export_job, job_dir(job_id))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"导出失败：{exc}") from exc
     path = job_dir(job_id) / f"transcript.{extension}"
@@ -811,15 +836,33 @@ def _prepare_export(job_id: str, extension: str) -> tuple[dict[str, Any], Path]:
 
 
 @app.get("/api/jobs/{job_id}/export.md")
-def export_markdown(job_id: str) -> FileResponse:
-    job, path = _prepare_export(job_id, "md")
+def export_markdown(
+    job_id: str,
+    include_translation: bool = True,
+    translation_language: str | None = None,
+) -> FileResponse:
+    job, path = _prepare_export(
+        job_id,
+        "md",
+        include_translation,
+        translation_language,
+    )
     filename = f"{slugify(job.get('title') or '访谈逐字稿')}.md"
     return FileResponse(str(path), media_type="text/markdown", filename=filename)
 
 
 @app.get("/api/jobs/{job_id}/export.docx")
-def export_docx(job_id: str) -> FileResponse:
-    job, path = _prepare_export(job_id, "docx")
+def export_docx(
+    job_id: str,
+    include_translation: bool = True,
+    translation_language: str | None = None,
+) -> FileResponse:
+    job, path = _prepare_export(
+        job_id,
+        "docx",
+        include_translation,
+        translation_language,
+    )
     filename = f"{slugify(job.get('title') or '访谈逐字稿')}.docx"
     return FileResponse(
         str(path),
@@ -829,15 +872,33 @@ def export_docx(job_id: str) -> FileResponse:
 
 
 @app.get("/api/jobs/{job_id}/export.srt")
-def export_srt(job_id: str) -> FileResponse:
-    job, path = _prepare_export(job_id, "srt")
+def export_srt(
+    job_id: str,
+    include_translation: bool = True,
+    translation_language: str | None = None,
+) -> FileResponse:
+    job, path = _prepare_export(
+        job_id,
+        "srt",
+        include_translation,
+        translation_language,
+    )
     filename = f"{slugify(job.get('title') or '访谈逐字稿')}.srt"
     return FileResponse(str(path), media_type="application/x-subrip", filename=filename)
 
 
 @app.get("/api/jobs/{job_id}/export.vtt")
-def export_vtt(job_id: str) -> FileResponse:
-    job, path = _prepare_export(job_id, "vtt")
+def export_vtt(
+    job_id: str,
+    include_translation: bool = True,
+    translation_language: str | None = None,
+) -> FileResponse:
+    job, path = _prepare_export(
+        job_id,
+        "vtt",
+        include_translation,
+        translation_language,
+    )
     filename = f"{slugify(job.get('title') or '访谈逐字稿')}.vtt"
     return FileResponse(str(path), media_type="text/vtt", filename=filename)
 

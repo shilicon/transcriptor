@@ -18,6 +18,59 @@ MAX_BATCH_CHARS = 5000
 MAX_BATCH_ITEMS = 20
 
 
+def _has_translation_text(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    texts = entry.get("texts")
+    return isinstance(texts, dict) and any(
+        str(value or "").strip() for value in texts.values()
+    )
+
+
+def translation_languages(job: dict[str, Any]) -> list[str]:
+    translations = job.get("translations")
+    if not isinstance(translations, dict):
+        return []
+    ordered = [
+        language
+        for language in ("简体中文", "English")
+        if _has_translation_text(translations.get(language))
+    ]
+    ordered.extend(
+        language
+        for language in sorted(translations)
+        if language not in ordered
+        and _has_translation_text(translations.get(language))
+    )
+    return ordered
+
+
+def translation_texts(
+    job: dict[str, Any],
+    paragraph: dict[str, Any],
+    languages: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    translations = job.get("translations")
+    if not isinstance(translations, dict):
+        return []
+    paragraph_id = str(paragraph.get("id") or "")
+    if not paragraph_id:
+        return []
+
+    items: list[tuple[str, str]] = []
+    for language in languages if languages is not None else translation_languages(job):
+        entry = translations.get(language)
+        if not isinstance(entry, dict):
+            continue
+        texts = entry.get("texts")
+        if not isinstance(texts, dict):
+            continue
+        text = re.sub(r"\s+", " ", str(texts.get(paragraph_id) or "")).strip()
+        if text:
+            items.append((language, text))
+    return items
+
+
 def _chat_url(base_url: str) -> str:
     base = (base_url or DEFAULT_DEEPSEEK_BASE_URL).strip().rstrip("/")
     return f"{base}/chat/completions"
@@ -163,7 +216,7 @@ def _request_batch(
         if not isinstance(item, dict):
             continue
         segment_id = str(item.get("id") or "").strip()
-        text = str(item.get("text") or "").strip()
+        text = re.sub(r"\s+", " ", str(item.get("text") or "")).strip()
         if segment_id and text:
             translated[segment_id] = text
 

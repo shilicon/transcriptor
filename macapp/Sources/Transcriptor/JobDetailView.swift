@@ -26,6 +26,15 @@ struct JobDetailView: View {
         current.translations?[translationTarget]
     }
 
+    private var exportTranslationLanguage: String? {
+        if let texts = currentTranslation?.texts, !texts.isEmpty {
+            return translationTarget
+        }
+        return translationLanguages.first {
+            current.translations?[$0]?.texts.isEmpty == false
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -456,10 +465,23 @@ struct JobDetailView: View {
     }
 
     private func export(_ ext: String) {
+        let language = exportTranslationLanguage
+        guard let destination = model.chooseExportDestination(
+            suggestedName: current.title,
+            ext: ext,
+            translationLanguage: language
+        ) else {
+            return
+        }
+        let includeTranslation = destination.includeTranslation && language != nil
         Task {
             do {
-                let data = try await model.exportData(ext)
-                try model.saveExport(data, suggestedName: current.title, ext: ext)
+                let data = try await model.exportData(
+                    ext,
+                    includeTranslation: includeTranslation,
+                    translationLanguage: includeTranslation ? language : nil
+                )
+                try model.writeExport(data, to: destination.url)
             } catch {
                 model.errorMessage = error.localizedDescription
             }
