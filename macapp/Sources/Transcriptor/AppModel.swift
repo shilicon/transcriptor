@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
     @Published var isBusy = false
     @Published private(set) var generatingChaptersJobs: Set<String> = []
     @Published private(set) var translatingJobs: Set<String> = []
+    @Published private(set) var resegmentingJobs: Set<String> = []
 
     @Published var editingTranscript = false
     @Published var draftParagraphs: [Paragraph] = [] {
@@ -42,6 +43,11 @@ final class AppModel: ObservableObject {
     var isTranslating: Bool {
         guard let id = selectedJobId else { return false }
         return translatingJobs.contains(id)
+    }
+
+    var isResegmenting: Bool {
+        guard let id = selectedJobId else { return false }
+        return resegmentingJobs.contains(id)
     }
 
     let backend = BackendManager()
@@ -477,6 +483,43 @@ final class AppModel: ObservableObject {
             await loadJobs()
         } catch {
             if selectedJobId == id { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func resegment(
+        apiKey: String,
+        baseURL: String,
+        model: String
+    ) async {
+        guard let id = job?.id, selectedJobId == id,
+              !resegmentingJobs.contains(id) else {
+            return
+        }
+        resegmentingJobs.insert(id)
+        defer { resegmentingJobs.remove(id) }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
+        do {
+            let updated = try await api.resegment(
+                id,
+                apiKey: apiKey,
+                baseURL: baseURL,
+                model: model
+            )
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
+        } catch {
+            if selectedJobId == id {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

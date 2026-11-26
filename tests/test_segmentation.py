@@ -92,7 +92,7 @@ class SemanticSegmentationTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         system = calls[0]["messages"][0]["content"]
         self.assertIn("genuine topic, argument or narrative shifts", system)
-        self.assertIn("never exceed 12", system)
+        self.assertIn("MUST return enough breaks", system)
         self.assertEqual(calls[0]["response_format"], {"type": "json_object"})
         self.assertEqual(calls[0]["thinking"], {"type": "disabled"})
 
@@ -124,9 +124,13 @@ class SemanticSegmentationTests(unittest.TestCase):
         self.assertIn("Third turn", user)
         self.assertNotIn("Second turn", user)
 
-    def test_undersized_break_plan_is_rejected(self):
-        with self.assertRaisesRegex(segmentation.SegmentationError, "过长"):
-            self._plan(_segments(24), [8])
+    def test_undersized_break_plan_is_repaired(self):
+        _, result = self._plan(_segments(24), [8])
+        self.assertEqual(result, {8, 18})
+
+    def test_missing_break_for_slightly_long_turn_is_repaired(self):
+        _, result = self._plan(_segments(13), [])
+        self.assertEqual(result, {10})
 
     def test_fenced_json_is_parsed(self):
         calls, result = self._plan(

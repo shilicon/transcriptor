@@ -75,9 +75,10 @@ def _extract_json(text: str) -> Any:
     raise SegmentationError("AI 分段返回的不是有效 JSON。")
 
 
-def _validate_breaks(
+def _repair_breaks(
     breaks: set[int],
     turns: list[list[int]],
+    target_sentences: int,
 ) -> set[int]:
     allowed = {
         index
@@ -91,10 +92,16 @@ def _validate_breaks(
         ]
         ends = starts[1:] + [turn[-1] + 1]
         for start, end in zip(starts, ends):
-            if end - start > MAX_PARAGRAPH_SENTENCES:
-                raise SegmentationError(
-                    "AI 分段计划仍然包含过长段落，已回退到规则分段。"
-                )
+            if end - start <= MAX_PARAGRAPH_SENTENCES:
+                continue
+            # The model missed a boundary.  Keep its semantic breaks but add
+            # safety breaks so one oversized group cannot survive.
+            step = max(1, target_sentences)
+            cursor = start + step
+            while cursor < end:
+                if cursor in allowed:
+                    breaks.add(cursor)
+                cursor += step
     return breaks
 
 
@@ -131,10 +138,12 @@ def _request_breaks(
         "every N sentences. Aim for about "
         f"{target_sentences} sentences per paragraph and never exceed "
         f"{MAX_PARAGRAPH_SENTENCES}. Never place a break between a sentence and "
-        "its continuation. Never cross a speaker turn. Return ONLY a JSON "
-        "object with the shape {\"breaks\":[index,...]}, where each index is "
-        "the first segment of a new paragraph. Do not return a turn's first "
-        "segment. Do not add markdown or explanations."
+        "its continuation. Never cross a speaker turn. If a turn has more "
+        f"than {MAX_PARAGRAPH_SENTENCES} segments, you MUST return enough "
+        "breaks so every resulting paragraph stays within that limit. Return "
+        "ONLY a JSON object with the shape {\"breaks\":[index,...]}, where "
+        "each index is the first segment of a new paragraph. Do not return a "
+        "turn's first segment. Do not add markdown or explanations."
     )
     user = "Speaker turns:\n\n" + json.dumps(
         payload_turns,
@@ -213,7 +222,7 @@ def _request_breaks(
             breaks.add(value)
         elif isinstance(value, str) and value.strip().isdigit():
             breaks.add(int(value.strip()))
-    return _validate_breaks(breaks, turns)
+    return _repair_breaks(breaks, turns, target_sentences)
 
 
 def semantic_paragraph_breaks(

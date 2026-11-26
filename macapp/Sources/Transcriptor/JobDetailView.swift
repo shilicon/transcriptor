@@ -13,6 +13,7 @@ struct JobDetailView: View {
     @State private var speakerNames: [String: String] = [:]
     @State private var showDeleteConfirm = false
     @State private var showUndoConfirm = false
+    @State private var showResegmentConfirm = false
     @AppStorage("translation.target") private var translationTarget = "简体中文"
     @AppStorage("translation.show") private var showTranslations = true
     @AppStorage("deepseek.baseURL") private var deepseekBaseURL = "https://api.deepseek.com"
@@ -47,6 +48,9 @@ struct JobDetailView: View {
                 }
                 if let exportError = current.exportError, !exportError.isEmpty {
                     warningCard(exportError)
+                }
+                if let warning = current.resegmentWarning, !warning.isEmpty {
+                    warningCard(warning, title: "分段提示")
                 }
                 if current.isDone {
                     if let correction = current.correction, correction.status != "disabled" {
@@ -92,6 +96,14 @@ struct JobDetailView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("只会恢复由 AI 自动修改、且之后未被人工编辑的段落。人工修改会保留。")
+        }
+        .alert("重新分段？", isPresented: $showResegmentConfirm) {
+            Button("重新分段", role: .destructive) {
+                startResegment()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将按当前逐字稿文字重新分段。已有译文会被清除")
         }
     }
 
@@ -206,10 +218,13 @@ struct JobDetailView: View {
         }
     }
 
-    private func warningCard(_ text: String) -> some View {
+    private func warningCard(
+        _ text: String,
+        title: String = "导出提示"
+    ) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 6) {
-                Label("导出提示", systemImage: "exclamationmark.circle")
+                Label(title, systemImage: "exclamationmark.circle")
                     .font(.headline)
                     .foregroundStyle(.orange)
                 Text(text)
@@ -349,8 +364,25 @@ struct JobDetailView: View {
                 if selectedTab == .transcript && !model.editingTranscript {
                     HStack(spacing: 10) {
                         translationControls
+
+                        Button {
+                            showResegmentConfirm = true
+                        } label: {
+                            if model.isResegmenting {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label(
+                                    "重新分段",
+                                    systemImage: "arrow.triangle.2.circlepath"
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(model.isResegmenting || model.isTranslating)
+
                         Spacer()
-                        Text("使用 AI 翻译整份逐字稿，译文会保存在任务中")
+                        Text("使用 AI 翻译并校正整份逐字稿，结果会保存在任务中")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -417,11 +449,31 @@ struct JobDetailView: View {
                 systemImage: "character.bubble"
             )
         }
-        .disabled(model.isTranslating)
+        .disabled(model.isTranslating || model.isResegmenting)
 
         if model.isTranslating {
             ProgressView()
                 .controlSize(.small)
+        }
+    }
+
+    private func startResegment() {
+        let apiKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+        let configuredBase = current.settings?.deepseekBaseUrl?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let configuredModel = current.settings?.deepseekModel?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let baseURL = configuredBase.isEmpty ? deepseekBaseURL : configuredBase
+        let modelName = configuredModel.isEmpty ? deepseekModel : configuredModel
+
+        Task {
+            await model.resegment(
+                apiKey: apiKey,
+                baseURL: baseURL,
+                model: modelName
+            )
+            translationTarget = translationLanguages[0]
+            showTranslations = false
         }
     }
 

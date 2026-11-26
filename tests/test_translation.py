@@ -53,6 +53,7 @@ class TranslationLLMTests(unittest.TestCase):
         paragraphs: list[dict] | None = None,
         api_key: str = "sk-synthetic",
         handler=None,
+        review: bool = False,
     ):
         calls = []
         items = paragraphs or PARAGRAPHS
@@ -86,6 +87,7 @@ class TranslationLLMTests(unittest.TestCase):
                 api_key=api_key,
                 base_url="https://api.deepseek.com",
                 model="deepseek-flash",
+                review=review,
             )
         return calls, result
 
@@ -142,6 +144,44 @@ class TranslationLLMTests(unittest.TestCase):
 
         with self.assertRaisesRegex(translation.TranslationError, "有效 JSON"):
             self._run(handler=handler)
+
+    def test_translation_is_reviewed_by_ai(self):
+        review_calls = []
+
+        def handler(request):
+            payload = json.loads(request.content)
+            review_calls.append(payload)
+            system = payload["messages"][0]["content"]
+            if "professional translator" in system:
+                segments = json.loads(
+                    payload["messages"][1]["content"].split("\n\n", 1)[1]
+                )
+                translated = [
+                    {"id": segment["id"], "text": f"EN: {segment['text']}"}
+                    for segment in segments
+                ]
+            else:
+                self.assertIn("bilingual editor", system)
+                segments = json.loads(
+                    payload["messages"][1]["content"].split("\n\n", 1)[1]
+                )
+                translated = [
+                    {"id": segment["id"], "text": f"Reviewed: {segment['text']}"}
+                    for segment in segments
+                ]
+            return httpx.Response(
+                200,
+                request=request,
+                json=_response(
+                    json.dumps({"translations": translated}, ensure_ascii=False)
+                ),
+            )
+
+        _, result = self._run(handler=handler, review=True)
+        self.assertEqual(len(review_calls), 2)
+        self.assertEqual(review_calls[1]["temperature"], 0.0)
+        self.assertEqual(result["p0001"], "Reviewed: EN: Hello and welcome.")
+        self.assertEqual(result["p0002"], "Reviewed: EN: Today we discuss chips.")
 
     def test_truncated_response_raises(self):
         def handler(request):

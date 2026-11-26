@@ -119,6 +119,7 @@ struct Job: Codable, Identifiable {
     var exportError: String?
     var correction: CorrectionInfo?
     var correctionWarning: String?
+    var resegmentWarning: String?
 
     var statusValue: JobStatus { JobStatus(rawValue: status) ?? .queued }
     var duration: Double? { audio?.duration }
@@ -176,6 +177,18 @@ struct ChaptersPayload: Codable {
         var title: String
     }
     var chapters: [Item]
+}
+
+struct ResegmentPayload: Codable {
+    var apiKey: String
+    var baseURL: String
+    var model: String
+
+    enum CodingKeys: String, CodingKey {
+        case apiKey = "api_key"
+        case baseURL = "base_url"
+        case model
+    }
 }
 
 struct TranslatePayload: Codable {

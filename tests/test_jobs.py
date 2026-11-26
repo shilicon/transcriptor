@@ -470,6 +470,91 @@ class ParagraphFormattingPipelineTests(unittest.TestCase):
             )
 
 
+class ResegmentRouteTests(unittest.TestCase):
+    def _job_with_segments(self, job_id: str):
+        job = make_job(job_id, "done")
+        job["segments"] = [
+            {
+                "start": index * 15.0,
+                "end": index * 15.0 + 14.0,
+                "text": (
+                    "Alpha one. Beta two. Gamma three. "
+                    "This fragment continues"
+                ),
+                "speaker_id": "S1",
+            }
+            for index in range(12)
+        ]
+        job["translations"] = {
+            "English": {
+                "model": "deepseek-flash",
+                "texts": {"p0001": "Old translation."},
+            }
+        }
+        return job
+
+    def test_resegment_uses_ai_and_clears_translations(self):
+        with isolated_jobs_dir():
+            job_id = "resegment-ai"
+            save_job(self._job_with_segments(job_id))
+            captured = {}
+
+            def fake_plan(segments, **kwargs):
+                captured["count"] = len(segments)
+                captured["api_key"] = kwargs.get("api_key")
+                return set(range(5, len(segments), 5))
+
+            async def scenario():
+                with patch.object(
+                    main,
+                    "semantic_paragraph_breaks",
+                    side_effect=fake_plan,
+                ):
+                    return await main.resegment(
+                        job_id,
+                        main.ResegmentRequest(
+                            api_key="sk-synthetic",
+                            base_url="https://api.deepseek.com",
+                            model="deepseek-flash",
+                        ),
+                    )
+
+            result = asyncio.run(scenario())
+            self.assertEqual(captured["api_key"], "sk-synthetic")
+            self.assertGreater(captured["count"], 12)
+            self.assertEqual(result["translations"], {})
+            self.assertGreater(len(result["paragraphs"]), 1)
+            self.assertTrue(
+                all(
+                    sentence_count(paragraph["text"]) <= 6
+                    for paragraph in result["paragraphs"]
+                )
+            )
+            saved = load_job(job_id)
+            self.assertGreater(len(saved["segments"]), 12)
+            self.assertIsNone(result["resegment_warning"])
+
+    def test_resegment_without_key_falls_back_to_rules(self):
+        with isolated_jobs_dir():
+            job_id = "resegment-fallback"
+            save_job(self._job_with_segments(job_id))
+
+            async def scenario():
+                return await main.resegment(
+                    job_id,
+                    main.ResegmentRequest(api_key=""),
+                )
+
+            result = asyncio.run(scenario())
+            self.assertIn("规则分段", result["resegment_warning"])
+            self.assertTrue(
+                all(
+                    sentence_count(paragraph["text"]) <= 10
+                    for paragraph in result["paragraphs"]
+                )
+            )
+
+
 class ChapterConcurrencyTests(unittest.TestCase):
     def test_auto_chapters_forwards_deepseek_key_and_instructions(self):
         with isolated_jobs_dir():

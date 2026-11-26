@@ -37,10 +37,12 @@ from .config import (
 )
 from .download import DownloadError, normalize_youtube_url
 from .exporters import write_exports
+from .formatting import build_paragraphs, split_segments_at_sentences
 from .job_setup import build_job as build_job_data
 from .job_setup import validate_job_options
 from .pipeline import run_pipeline
 from .secrets import pop_job_secrets, set_job_secret
+from .segmentation import SegmentationError, semantic_paragraph_breaks
 from .subtitles import sync_subtitle_segments
 from .translation import TranslationError, translate_paragraphs
 from .utils import (
@@ -214,6 +216,12 @@ class TranslateRequest(BaseModel):
     model: str | None = None
 
 
+class ResegmentRequest(BaseModel):
+    api_key: str = ""
+    base_url: str | None = None
+    model: str | None = None
+
+
 class URLJobRequest(BaseModel):
     url: str
     title: str = ""
@@ -236,6 +244,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
         "status", "stage", "progress", "error", "audio", "settings",
         "speakers", "paragraphs", "chapters", "translations", "stats", "exports",
         "export_error", "speaker_names", "correction", "correction_warning",
+        "resegment_warning",
     ]
     return {key: job.get(key) for key in keys}
 
@@ -759,6 +768,141 @@ async def translate(job_id: str, payload: TranslateRequest) -> dict[str, Any]:
             "texts": texts,
         }
         job["translations"] = translations
+        _write_exports_in_place(job)
+
+    return _public_job(_mutate_or_http(job_id, apply))
+
+
+@app.post("/api/jobs/{job_id}/resegment")
+async def resegment(job_id: str, payload: ResegmentRequest) -> dict[str, Any]:
+    with job_lock(job_id):
+        job = _require_job(job_id)
+        _require_done(job)
+        source_kind = "segments"
+        source_items = copy.deepcopy(job.get("segments") or [])
+        if not source_items:
+            source_kind = "paragraphs"
+            source_items = [
+                {
+                    "start": paragraph.get("start"),
+                    "end": paragraph.get("end"),
+                    "text": paragraph.get("text", ""),
+                    "speaker_id": paragraph.get("speaker_id", ""),
+                }
+                for paragraph in job.get("paragraphs", [])
+            ]
+        source_snapshot = [
+            (
+                float(item.get("start") or 0),
+                float(item.get("end") or 0),
+                str(item.get("text") or ""),
+                str(item.get("speaker_id") or ""),
+            )
+            for item in source_items
+        ]
+        settings = dict(job.get("settings") or {})
+        language = settings.get("language")
+        glossary = bool(settings.get("glossary", False))
+    if is_job_deleted(job_id):
+        raise HTTPException(status_code=404, detail="任务已删除")
+    if not source_items:
+        raise HTTPException(status_code=400, detail="没有可用于重新分段的文本。")
+
+    sentence_segments = split_segments_at_sentences(source_items)
+    if not sentence_segments:
+        raise HTTPException(status_code=400, detail="没有可用于重新分段的文本。")
+    speaker_indices = []
+    for segment in sentence_segments:
+        speaker_id = str(segment.get("speaker_id") or "")
+        if speaker_id.startswith("S") and speaker_id[1:].isdigit():
+            speaker_indices.append(max(0, int(speaker_id[1:]) - 1))
+        else:
+            speaker_indices.append(0)
+
+    api_key = (
+        (payload.api_key or "").strip()
+        or os.environ.get("TRANSCRIPTOR_DEEPSEEK_API_KEY")
+        or os.environ.get("DEEPSEEK_API_KEY")
+        or ""
+    )
+    base_url = (
+        payload.base_url
+        or settings.get("deepseek_base_url")
+        or DEFAULT_DEEPSEEK_BASE_URL
+    )
+    model = (
+        payload.model
+        or settings.get("deepseek_model")
+        or DEFAULT_DEEPSEEK_MODEL
+    )
+
+    semantic_breaks: set[int] | None = None
+    warning: str | None = None
+    if api_key:
+        try:
+            semantic_breaks = await run_in_threadpool(
+                semantic_paragraph_breaks,
+                sentence_segments,
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+            )
+        except SegmentationError as exc:
+            warning = f"AI 语义分段失败，已使用规则分段：{exc}"
+    else:
+        warning = "未配置 AI API Key，已使用规则分段。"
+    if warning:
+        print(f"[transcriptor] resegment fallback: {warning}")
+
+    paragraphs = build_paragraphs(
+        sentence_segments,
+        speaker_indices,
+        language=language,
+        glossary=glossary,
+        break_before=semantic_breaks,
+    )
+
+    def apply(job: dict[str, Any]) -> None:
+        _require_done(job)
+        current_items = job.get(source_kind) or []
+        current_snapshot = [
+            (
+                float(item.get("start") or 0),
+                float(item.get("end") or 0),
+                str(item.get("text") or ""),
+                str(item.get("speaker_id") or ""),
+            )
+            for item in current_items
+        ]
+        if current_snapshot != source_snapshot:
+            raise HTTPException(
+                status_code=409,
+                detail="逐字稿在重新分段期间已被修改，请重试。",
+            )
+
+        for index, paragraph in enumerate(paragraphs, start=1):
+            paragraph["id"] = f"p{index:04d}"
+            paragraph["speaker_id"] = f"S{int(paragraph['speaker']) + 1}"
+            text = paragraph.get("formatted_text", paragraph["text"])
+            paragraph["original_text"] = text
+            paragraph["formatted_text"] = text
+            paragraph["correction_status"] = "original"
+            paragraph["manual_edited"] = False
+            paragraph.pop("speaker", None)
+        job["paragraphs"] = paragraphs
+        job["segments"] = sentence_segments
+        job["translations"] = {}
+        stats = job.setdefault("stats", {})
+        stats["paragraphs"] = len(paragraphs)
+        stats["segments"] = len(sentence_segments)
+        if job.get("correction"):
+            job["correction_warning"] = (
+                "重新分段后，原有 AI 校正撤销记录不再适用。"
+            )
+        if warning:
+            job["resegment_warning"] = warning
+        else:
+            job.pop("resegment_warning", None)
         _write_exports_in_place(job)
 
     return _public_job(_mutate_or_http(job_id, apply))

@@ -151,6 +151,25 @@ struct APIClient {
         )
     }
 
+    func resegment(
+        _ id: String,
+        apiKey: String,
+        baseURL: String,
+        model: String
+    ) async throws -> Job {
+        let payload = ResegmentPayload(
+            apiKey: apiKey,
+            baseURL: baseURL,
+            model: model
+        )
+        return try await send(
+            "jobs/\(id)/resegment",
+            method: "POST",
+            body: payload,
+            timeout: 300
+        )
+    }
+
     func translate(
         _ id: String,
         targetLanguage: String,

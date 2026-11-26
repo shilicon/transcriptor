@@ -229,6 +229,124 @@ def _request_batch(
     return translated
 
 
+def _review_batch(
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    model: str,
+    target_language: str,
+    translated: dict[str, str],
+) -> dict[str, str]:
+    items = [
+        {"id": segment_id, "text": text}
+        for segment_id, text in translated.items()
+    ]
+    system = (
+        "You are a professional bilingual editor. The following segments are "
+        f"{target_language} translations of an interview transcript. "
+        "Correct only clear grammar, spelling, punctuation, terminology or "
+        "mistranslation errors. Do not rewrite for style, summarize, merge, "
+        "split, omit or add content. Keep names, numbers and technical terms "
+        "accurate. If a segment is already correct, return it unchanged. "
+        "Return ONLY a JSON object with the shape "
+        "{\"translations\":[{\"id\":\"p0001\",\"text\":\"...\"}]} "
+        "and no markdown fences or explanations."
+    )
+    payload: dict[str, Any] = {
+        "model": model or DEFAULT_DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": "Translated segments:\n\n" + json.dumps(
+                items,
+                ensure_ascii=False,
+            )},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 6000,
+        "response_format": {"type": "json_object"},
+    }
+    if headers.get("Authorization"):
+        payload["thinking"] = {"type": "disabled"}
+
+    last_error: Exception | None = None
+    data: dict[str, Any] | None = None
+    for attempt in range(3):
+        try:
+            response = client.post(url, json=payload, headers=headers or None)
+            if response.status_code in {400, 422} and "thinking" in payload:
+                payload.pop("thinking", None)
+                response = client.post(url, json=payload, headers=headers or None)
+            if response.status_code in {400, 422} and "response_format" in payload:
+                payload.pop("response_format", None)
+                response = client.post(url, json=payload, headers=headers or None)
+            if response.status_code == 401:
+                raise TranslationError("API Key 无效或已过期，请在设置中检查。")
+            if response.status_code in {429, 500, 502, 503, 504}:
+                raise httpx.HTTPStatusError(
+                    f"LLM HTTP {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            if response.status_code >= 400:
+                raise TranslationError(
+                    f"AI 译文校正请求失败（HTTP {response.status_code}）："
+                    f"{response.text[:300]}"
+                )
+            data = response.json()
+            break
+        except TranslationError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+                continue
+            raise TranslationError(
+                f"无法连接译文校正接口：{exc}\n"
+                "请检查 API Key、Base URL 和模型 ID。"
+            ) from exc
+    if data is None:
+        raise TranslationError(f"无法连接译文校正接口：{last_error}")
+
+    choices = data.get("choices") or [{}]
+    choice = choices[0] or {}
+    message = choice.get("message") or {}
+    content = message.get("content") or message.get("reasoning_content") or ""
+    if not content:
+        if choice.get("finish_reason") == "length":
+            raise TranslationError("译文校正输出被截断，请重试。")
+        raise TranslationError("AI 没有返回校正后的译文。请重试。")
+    if choice.get("finish_reason") == "length":
+        raise TranslationError("译文校正输出被截断，请重试。")
+
+    parsed = _extract_json(content)
+    if isinstance(parsed, dict):
+        parsed = parsed.get("translations") or parsed.get("items") or []
+    if isinstance(parsed, dict):
+        parsed = [
+            {"id": segment_id, "text": text}
+            for segment_id, text in parsed.items()
+        ]
+    if not isinstance(parsed, list):
+        raise TranslationError("AI 返回的校正译文格式不正确。")
+
+    reviewed: dict[str, str] = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        segment_id = str(item.get("id") or "").strip()
+        text = re.sub(r"\s+", " ", str(item.get("text") or "")).strip()
+        if segment_id and text:
+            reviewed[segment_id] = text
+
+    missing = set(translated) - reviewed.keys()
+    if missing:
+        raise TranslationError(
+            f"AI 译文校正缺少 {len(missing)} 段，请重试。"
+        )
+    return reviewed
+
+
 def translate_paragraphs(
     paragraphs: list[dict[str, Any]],
     target_language: str,
@@ -236,6 +354,7 @@ def translate_paragraphs(
     base_url: str = DEFAULT_DEEPSEEK_BASE_URL,
     model: str = DEFAULT_DEEPSEEK_MODEL,
     timeout: float = 180.0,
+    review: bool = True,
 ) -> dict[str, str]:
     if not paragraphs:
         raise TranslationError("逐字稿为空，无法翻译。")
@@ -252,16 +371,24 @@ def translate_paragraphs(
     try:
         with httpx.Client(timeout=timeout) as client:
             for batch in _batches(paragraphs):
-                texts.update(
-                    _request_batch(
+                translated = _request_batch(
+                    client,
+                    _chat_url(base_url),
+                    headers,
+                    model,
+                    language,
+                    batch,
+                )
+                if review:
+                    translated = _review_batch(
                         client,
                         _chat_url(base_url),
                         headers,
                         model,
                         language,
-                        batch,
+                        translated,
                     )
-                )
+                texts.update(translated)
     except TranslationError:
         raise
     except Exception as exc:
