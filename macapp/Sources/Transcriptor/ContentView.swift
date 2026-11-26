@@ -157,7 +157,7 @@ private struct JobRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 HStack(spacing: 5) {
-                    Text(job.statusValue.label)
+                    Text(job.corrupt == true ? "任务文件损坏" : job.statusValue.label)
                     if let duration = job.duration {
                         Text("·")
                         Text(Format.duration(duration))
@@ -167,7 +167,7 @@ private struct JobRow: View {
                     }
                 }
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(job.corrupt == true ? Color.red : Color.secondary)
             }
             Spacer(minLength: 0)
         }

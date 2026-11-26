@@ -1,0 +1,16 @@
+{
+  "A08_list_decode" : "entire-list-rejected",
+  "same_job_reordered_save" : {
+    "display_after_old_response" : "older saved text",
+    "display_before_old_response" : "newer saved text",
+    "draft_count_after_old_response" : 0,
+    "editing_after_old_response" : false
+  },
+  "switch_while_detail_loading" : {
+    "delete_calls" : [
+      "DELETE \/api\/jobs\/A"
+    ],
+    "displayed_before_delete" : "A",
+    "selected_before_delete" : "B"
+  }
+}

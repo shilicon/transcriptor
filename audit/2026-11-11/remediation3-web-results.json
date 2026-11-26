@@ -1,0 +1,17 @@
+{
+  "speaker_response_after_text_save": {
+    "before_old_response": "newer saved text",
+    "after_old_response": "newer saved text",
+    "rendered_text": "newer saved text"
+  },
+  "refresh_after_newer_save": {
+    "after_save_response": "newer saved text",
+    "after_refresh_response": "newer saved text",
+    "rendered_text": "newer saved text",
+    "server_text": "newer saved text"
+  },
+  "chapter_during_text_save": {
+    "displayed_chapters_after_success": 1,
+    "rendered_chapters": 1
+  }
+}

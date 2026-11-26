@@ -1,0 +1,18 @@
+{
+  "actual_backend_correction_detail_decode" : "job-detail-rejected",
+  "actual_backend_stats_list_decode" : "entire-list-rejected",
+  "chapter_during_text_save" : {
+    "busy_after_success" : false,
+    "calls_after_chapter_response" : [
+
+    ],
+    "displayed_chapters_after_success" : 0
+  },
+  "chapter_switch_away_and_back" : {
+    "busy_job" : "A",
+    "request_finished" : true,
+    "selected" : "A",
+    "still_busy" : true
+  },
+  "chapters_after_manual_refresh" : 1
+}

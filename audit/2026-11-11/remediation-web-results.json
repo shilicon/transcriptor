@@ -1,0 +1,28 @@
+{
+  "probe": "remediation_web_session_and_state_order",
+  "date": "2026-11-11",
+  "transport": "actual local uvicorn for login; browser evaluate with synthetic fetch for state ordering",
+  "anonymous_root_set_cookie": false,
+  "api_before_login": 401,
+  "wrong_session_token": 401,
+  "correct_session_token": 200,
+  "api_with_cookie_after_login": 200,
+  "api_with_native_header": 200,
+  "untrusted_origin_login": 403,
+  "same_job_reordered_save": {
+    "after_newer_response": {
+      "text": "newer saved text",
+      "editing": false
+    },
+    "after_older_response": {
+      "text": "newer saved text",
+      "editing": true,
+      "draft_preserved": true
+    }
+  },
+  "switch_while_detail_loading": {
+    "selected": "B",
+    "displayed": null,
+    "delete_calls": []
+  }
+}

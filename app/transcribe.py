@@ -42,7 +42,11 @@ def probe_duration(path: Path) -> float:
 
 def extract_audio(input_path: Path, output_path: Path) -> None:
     ffmpeg = _require_binary("ffmpeg")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # The job directory is created by the job creation path and must never be
+    # recreated here.  If it disappeared, the task was deleted while we were
+    # being scheduled; failing without mkdir prevents a resurrected empty dir.
+    if not output_path.parent.is_dir():
+        raise TranscriptionError("任务目录不存在，可能已被删除。")
     proc = subprocess.run(
         [
             ffmpeg, "-y", "-v", "error",

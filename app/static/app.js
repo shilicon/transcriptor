@@ -7,6 +7,17 @@ const state = {
   timer: null,
   config: null,
   editing: false,
+  selectedJobId: null,
+  jobsRequest: 0,
+  jobRequest: 0,
+  chapterRequest: 0,
+  saveRequest: 0,
+  speakerSaveRequest: 0,
+  chapterSaveRequest: 0,
+  draftVersion: 0,
+  mutationVersion: 0,
+  refreshRequest: 0,
+  snapshotVersion: 0,
 };
 
 const LLM_ENDPOINT_KEY = "transcriptor.llm.endpoint";
@@ -57,7 +68,12 @@ async function api(url, options = {}) {
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!response.ok) {
     const detail = data && data.detail ? data.detail : (typeof data === "string" ? data : `HTTP ${response.status}`);
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = response.status;
+    if (response.status === 401 && !String(url).endsWith("/api/session")) {
+      showAuthGate();
+    }
+    throw error;
   }
   return data;
 }
@@ -79,8 +95,49 @@ async function loadConfig() {
     $("#llm-endpoint").value = endpoint;
     $("#llm-model").value = model;
     $("#title-language").value = localStorage.getItem(TITLE_LANG_KEY) || "zh";
+    return true;
   } catch (error) {
+    if (error.status === 401) return false;
     console.warn(error);
+    return true;
+  }
+}
+
+function showAuthGate() {
+  const gate = $("#auth-gate");
+  if (!gate) return;
+  gate.classList.remove("hidden");
+  const input = $("#session-token");
+  if (input) input.focus();
+}
+
+function hideAuthGate() {
+  const gate = $("#auth-gate");
+  if (gate) gate.classList.add("hidden");
+}
+
+async function login() {
+  const input = $("#session-token");
+  const errorEl = $("#auth-error");
+  const token = input ? input.value.trim() : "";
+  if (errorEl) errorEl.textContent = "";
+  if (!token) {
+    if (errorEl) errorEl.textContent = "请输入会话凭据。";
+    return;
+  }
+  try {
+    await api("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (input) input.value = "";
+    hideAuthGate();
+    const authed = await loadConfig();
+    if (authed) await startApp();
+    else showAuthGate();
+  } catch (error) {
+    if (errorEl) errorEl.textContent = error.message;
   }
 }
 
@@ -118,6 +175,7 @@ function renderJobs() {
     const meta = document.createElement("div");
     meta.className = "job-item-meta";
     const bits = [];
+    if (job.corrupt) bits.push("任务文件损坏");
     if (job.duration) bits.push(formatDuration(job.duration));
     if (job.stats && job.stats.paragraphs) bits.push(`${job.stats.paragraphs} 段`);
     if (job.created_at) {
@@ -131,11 +189,24 @@ function renderJobs() {
 }
 
 async function loadJobs() {
+  const request = ++state.jobsRequest;
   try {
-    state.jobs = await api("/api/jobs");
+    const jobs = await api("/api/jobs");
+    if (request !== state.jobsRequest) return;
+    state.jobs = jobs;
+    if (state.selectedJobId && !jobs.some((job) => job.id === state.selectedJobId)) {
+      state.selectedJobId = null;
+      state.job = null;
+      state.editing = false;
+      state.jobRequest += 1;
+      state.chapterRequest += 1;
+      resetChapterButtons();
+      $("#job-view").classList.add("hidden");
+      $("#empty-state").classList.remove("hidden");
+    }
     renderJobs();
   } catch (error) {
-    console.warn(error);
+    if (request === state.jobsRequest) console.warn(error);
   }
 }
 
@@ -148,9 +219,22 @@ function stopPolling() {
 
 async function selectJob(id) {
   stopPolling();
+  state.selectedJobId = id;
+  const request = ++state.jobRequest;
+  state.chapterRequest += 1;
+  state.saveRequest += 1;
+  state.speakerSaveRequest += 1;
+  state.chapterSaveRequest += 1;
+  state.draftVersion += 1;
+  state.mutationVersion += 1;
+  state.refreshRequest += 1;
+  state.snapshotVersion += 1;
+  state.job = null;
+  resetChapterButtons();
   try {
     const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
-    state.job = job;
+    if (request !== state.jobRequest || state.selectedJobId !== id) return;
+    adoptJobState(job);
     state.editing = false;
     setEditingUI();
     history.replaceState(null, "", `#job=${encodeURIComponent(id)}`);
@@ -160,7 +244,16 @@ async function selectJob(id) {
       pollJob(id);
     }
   } catch (error) {
-    toast(error.message, "error");
+    if (request === state.jobRequest && state.selectedJobId === id) {
+      toast(error.message, "error");
+      if (/损坏|不存在/.test(error.message)) {
+        state.selectedJobId = null;
+        state.job = null;
+        state.editing = false;
+        $("#job-view").classList.add("hidden");
+        $("#empty-state").classList.remove("hidden");
+      }
+    }
   }
 }
 
@@ -168,9 +261,17 @@ async function pollJob(id) {
   stopPolling();
   const tick = async () => {
     try {
+      const snapshotVersion = state.snapshotVersion;
       const job = await api(`/api/jobs/${encodeURIComponent(id)}`);
-      if (!state.job || state.job.id !== id) return;
-      state.job = job;
+      if (
+        state.selectedJobId !== id ||
+        !state.job ||
+        state.job.id !== id ||
+        snapshotVersion !== state.snapshotVersion
+      ) {
+        return;
+      }
+      adoptJobState(job);
       renderJob(job);
       renderJobs();
       if (job.status === "queued" || job.status === "running") {
@@ -184,6 +285,46 @@ async function pollJob(id) {
     }
   };
   state.timer = setTimeout(tick, 700);
+}
+
+function resetChapterButtons() {
+  const auto = $("#auto-chapters");
+  const basic = $("#basic-chapters");
+  if (auto) {
+    auto.disabled = false;
+    auto.textContent = "AI 自动分章";
+  }
+  if (basic) {
+    basic.disabled = false;
+    basic.textContent = "基础分章";
+  }
+}
+
+async function refreshJobState(jobId) {
+  if (state.selectedJobId !== jobId) return;
+  const version = state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
+  const request = ++state.refreshRequest;
+  try {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+    if (
+      state.selectedJobId !== jobId ||
+      request !== state.refreshRequest ||
+      version !== state.mutationVersion ||
+      snapshotVersion !== state.snapshotVersion
+    ) {
+      return;
+    }
+    adoptJobState(job);
+    if (!state.editing) renderJob(job);
+  } catch (error) {
+    if (state.selectedJobId === jobId) console.warn(error);
+  }
+}
+
+function adoptJobState(job) {
+  state.job = job;
+  state.snapshotVersion += 1;
 }
 
 function renderJob(job) {
@@ -227,7 +368,7 @@ function renderJob(job) {
     $("#dl-vtt").href = `/api/jobs/${encodeURIComponent(job.id)}/export.vtt`;
     renderSpeakers(job);
     setEditingUI();
-    renderTranscript(job);
+    if (!state.editing) renderTranscript(job);
     renderChapters(job);
   }
 }
@@ -357,12 +498,19 @@ function setEditingUI() {
 function toggleTranscriptEditing() {
   if (!state.job) return;
   state.editing = !state.editing;
+  state.draftVersion += 1;
   setEditingUI();
   renderTranscript(state.job);
 }
 
 async function saveTranscript() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
+  const saveRequest = ++state.saveRequest;
+  const mutation = ++state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
+  const draftVersionAtStart = state.draftVersion;
   const texts = (state.job.paragraphs || []).map((p) => p.text || "");
   const speakerIds = (state.job.paragraphs || []).map((p) => p.speaker_id || "");
   document.querySelectorAll("#transcript p[data-index]").forEach((el) => {
@@ -378,18 +526,30 @@ async function saveTranscript() {
     }
   });
   try {
-    const job = await api(`/api/jobs/${encodeURIComponent(state.job.id)}/paragraphs`, {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/paragraphs`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ texts, speaker_ids: speakerIds }),
     });
-    state.job = job;
-    state.editing = false;
-    setEditingUI();
-    renderJob(job);
-    toast("逐字稿已保存");
+    if (!state.job || state.job.id !== jobId || saveRequest !== state.saveRequest) {
+      await refreshJobState(jobId);
+      return;
+    }
+    if (mutation !== state.mutationVersion || snapshotVersion !== state.snapshotVersion) {
+      await refreshJobState(jobId);
+      return;
+    }
+    adoptJobState(job);
+    if (draftVersionAtStart === state.draftVersion) {
+      state.editing = false;
+      setEditingUI();
+      renderJob(job);
+      toast("逐字稿已保存");
+    } else {
+      toast("已保存提交时的文本；当前还有未保存草稿");
+    }
   } catch (error) {
-    toast(error.message, "error");
+    if (state.job && state.job.id === jobId) toast(error.message, "error");
   }
 }
 
@@ -455,38 +615,64 @@ function renderChapters(job) {
 
 async function saveSpeakers() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
+  const request = ++state.speakerSaveRequest;
+  const mutation = ++state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
   const speakers = $$("#speaker-inputs input[data-speaker-id]").map((input) => ({
     id: input.dataset.speakerId,
     name: input.value.trim(),
   }));
   try {
-    const job = await api(`/api/jobs/${encodeURIComponent(state.job.id)}/speakers`, {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/speakers`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speakers }),
     });
-    state.job = job;
+    if (!state.job || state.job.id !== jobId || request !== state.speakerSaveRequest) {
+      await refreshJobState(jobId);
+      return;
+    }
+    if (mutation !== state.mutationVersion || snapshotVersion !== state.snapshotVersion) {
+      await refreshJobState(jobId);
+      return;
+    }
+    adoptJobState(job);
     renderJob(job);
     toast("说话人姓名已保存");
   } catch (error) {
-    toast(error.message, "error");
+    if (state.job && state.job.id === jobId) toast(error.message, "error");
   }
 }
 
 async function saveChapters() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
+  const request = ++state.chapterSaveRequest;
+  const mutation = ++state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
   const chapters = chapterRows();
   try {
-    const job = await api(`/api/jobs/${encodeURIComponent(state.job.id)}/chapters`, {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/chapters`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chapters }),
     });
-    state.job = job;
+    if (!state.job || state.job.id !== jobId || request !== state.chapterSaveRequest) {
+      await refreshJobState(jobId);
+      return;
+    }
+    if (mutation !== state.mutationVersion || snapshotVersion !== state.snapshotVersion) {
+      await refreshJobState(jobId);
+      return;
+    }
+    adoptJobState(job);
     renderJob(job);
     toast("章节已保存");
   } catch (error) {
-    toast(error.message, "error");
+    if (state.job && state.job.id === jobId) toast(error.message, "error");
   }
 }
 
@@ -506,6 +692,11 @@ function addChapter() {
 
 async function runAutoChapters() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
+  const request = ++state.chapterRequest;
+  const mutation = ++state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
   const endpoint = $("#llm-endpoint").value.trim();
   const model = $("#llm-model").value.trim();
   const titleLanguage = $("#title-language").value;
@@ -517,57 +708,94 @@ async function runAutoChapters() {
   button.disabled = true;
   button.textContent = "生成中…";
   try {
-    const job = await api(`/api/jobs/${encodeURIComponent(state.job.id)}/chapters/auto`, {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/chapters/auto`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint, model, title_language: titleLanguage }),
     });
-    state.job = job;
+    if (request !== state.chapterRequest || !state.job || state.job.id !== jobId) {
+      await refreshJobState(jobId);
+      return;
+    }
+    if (mutation !== state.mutationVersion || snapshotVersion !== state.snapshotVersion) {
+      await refreshJobState(jobId);
+      return;
+    }
+    adoptJobState(job);
     renderJob(job);
     switchTab("chapters");
     toast("AI 章节已生成");
   } catch (error) {
-    toast(error.message, "error");
+    if (request === state.chapterRequest && state.job && state.job.id === jobId) {
+      toast(error.message, "error");
+    }
   } finally {
-    button.disabled = false;
-    button.textContent = original;
+    if (request === state.chapterRequest && state.job && state.job.id === jobId) {
+      button.disabled = false;
+      button.textContent = original;
+    }
   }
 }
 
 async function runBasicChapters() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
+  const request = ++state.chapterRequest;
+  const mutation = ++state.mutationVersion;
+  const snapshotVersion = state.snapshotVersion;
   const button = $("#basic-chapters");
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "生成中…";
   try {
-    const job = await api(`/api/jobs/${encodeURIComponent(state.job.id)}/chapters/basic`, { method: "POST" });
-    state.job = job;
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}/chapters/basic`, { method: "POST" });
+    if (request !== state.chapterRequest || !state.job || state.job.id !== jobId) {
+      await refreshJobState(jobId);
+      return;
+    }
+    if (mutation !== state.mutationVersion || snapshotVersion !== state.snapshotVersion) {
+      await refreshJobState(jobId);
+      return;
+    }
+    adoptJobState(job);
     renderJob(job);
     switchTab("chapters");
     toast("已生成基础章节");
   } catch (error) {
-    toast(error.message, "error");
+    if (request === state.chapterRequest && state.job && state.job.id === jobId) {
+      toast(error.message, "error");
+    }
   } finally {
-    button.disabled = false;
-    button.textContent = original;
+    if (request === state.chapterRequest && state.job && state.job.id === jobId) {
+      button.disabled = false;
+      button.textContent = original;
+    }
   }
 }
 
 async function deleteCurrentJob() {
   if (!state.job) return;
+  const jobId = state.job.id;
+  if (state.selectedJobId !== jobId) return;
   if (!confirm(`删除“${state.job.title}”？音频和导出文件也会一起删除。`)) return;
   try {
-    await api(`/api/jobs/${encodeURIComponent(state.job.id)}`, { method: "DELETE" });
-    stopPolling();
-    state.job = null;
-    $("#job-view").classList.add("hidden");
-    $("#empty-state").classList.remove("hidden");
-    history.replaceState(null, "", location.pathname);
+    await api(`/api/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+    if (state.job && state.job.id === jobId) {
+      stopPolling();
+      state.job = null;
+      state.selectedJobId = null;
+      state.jobRequest += 1;
+      state.chapterRequest += 1;
+      resetChapterButtons();
+      $("#job-view").classList.add("hidden");
+      $("#empty-state").classList.remove("hidden");
+      history.replaceState(null, "", location.pathname);
+    }
     await loadJobs();
     toast("任务已删除");
   } catch (error) {
-    toast(error.message, "error");
+    if (state.job && state.job.id === jobId) toast(error.message, "error");
   }
 }
 
@@ -630,6 +858,7 @@ function setupUpload() {
           language: $("#language").value,
           model: $("#model").value,
           initial_prompt: $("#initial-prompt").value.trim(),
+          glossary: $("#glossary").checked,
         };
         result = await api("/api/jobs/url", {
           method: "POST",
@@ -645,6 +874,7 @@ function setupUpload() {
         form.append("language", $("#language").value);
         form.append("model", $("#model").value);
         form.append("initial_prompt", $("#initial-prompt").value.trim());
+        form.append("glossary", $("#glossary").checked ? "true" : "false");
         result = await api("/api/jobs", { method: "POST", body: form });
       }
       toast("任务已创建，开始转写");
@@ -664,21 +894,24 @@ function setupEvents() {
   $("#edit-transcript").addEventListener("click", toggleTranscriptEditing);
   $("#save-transcript").addEventListener("click", saveTranscript);
   $("#save-chapters").addEventListener("click", saveChapters);
+  $("#transcript").addEventListener("input", () => { state.draftVersion += 1; });
+  $("#transcript").addEventListener("change", () => { state.draftVersion += 1; });
   $("#add-chapter").addEventListener("click", addChapter);
   $("#auto-chapters").addEventListener("click", runAutoChapters);
   $("#basic-chapters").addEventListener("click", runBasicChapters);
   $("#delete-job").addEventListener("click", deleteCurrentJob);
   $("#refresh-jobs").addEventListener("click", loadJobs);
+  $("#session-login").addEventListener("click", login);
+  $("#session-token").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") login();
+  });
   $$(".tab").forEach((tab) => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
   $("#llm-endpoint").addEventListener("change", (e) => localStorage.setItem(LLM_ENDPOINT_KEY, e.target.value.trim()));
   $("#llm-model").addEventListener("change", (e) => localStorage.setItem(LLM_MODEL_KEY, e.target.value.trim()));
   $("#title-language").addEventListener("change", (e) => localStorage.setItem(TITLE_LANG_KEY, e.target.value));
 }
 
-(async function init() {
-  setupUpload();
-  setupEvents();
-  await loadConfig();
+async function startApp() {
   await loadJobs();
   const params = new URLSearchParams(location.hash.replace(/^#/, ""));
   const jobId = params.get("job");
@@ -686,4 +919,15 @@ function setupEvents() {
     await selectJob(jobId);
     if (params.get("tab") === "chapters") switchTab("chapters");
   }
+}
+
+(async function init() {
+  setupUpload();
+  setupEvents();
+  const authed = await loadConfig();
+  if (!authed) {
+    showAuthGate();
+    return;
+  }
+  await startApp();
 })();

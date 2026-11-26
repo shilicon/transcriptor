@@ -1,0 +1,71 @@
+{
+  "data_directory": "/private/tmp/transcriptor-audit-data-ndhi31fx",
+  "results": [
+    {
+      "probe": "glossary_corruption",
+      "before": "We have decades of experience.",
+      "after": "We have deCadence of experience."
+    },
+    {
+      "probe": "number_order",
+      "applied": 1,
+      "before": "We increased from 10 to 20 units.",
+      "after": "We increased from 20 to 10 units."
+    },
+    {
+      "probe": "negation_deleted",
+      "applied": 1,
+      "before": "This change is not safe for customers.",
+      "after": "This change is safe for customers."
+    },
+    {
+      "probe": "chinese_rewrite",
+      "applied": 1,
+      "before": "我们认为这个方案不能上线，因为目前还有严重风险。",
+      "after": "我们认为这个方案可以上线，因为目前已经没有风险。"
+    },
+    {
+      "probe": "running_job_resurrected",
+      "delete_response": {
+        "deleted": true
+      },
+      "exists_immediately_after_delete": false,
+      "exists_after_worker": true,
+      "final_status": "done"
+    },
+    {
+      "probe": "chapter_generation_loses_edit",
+      "save_response": "Saved human correction.",
+      "after_save": "Saved human correction.",
+      "after_chapters": "Original approved text."
+    },
+    {
+      "probe": "undo_erases_manual_edit",
+      "before": "Manual correction only.",
+      "after": "Wrong ASR text."
+    },
+    {
+      "probe": "untrusted_host_accepted",
+      "status": 200,
+      "returned_jobs": 3
+    },
+    {
+      "probe": "cross_origin_simple_mutation",
+      "status": 200,
+      "correction_status": "undone"
+    },
+    {
+      "probe": "cross_origin_multipart_creation",
+      "status": 200,
+      "worker_scheduled": true
+    },
+    {
+      "probe": "single_malformed_file_breaks_list",
+      "status": 500
+    },
+    {
+      "probe": "single_malformed_file_blocks_startup",
+      "exception": "JSONDecodeError"
+    }
+  ]
+}

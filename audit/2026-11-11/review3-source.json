@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-11",
+  "head": "90b7a3eba399a5c3058a82d242ad35f497fb4200",
+  "scope": "Independent review of R02/R05 third remediation; YouTube and subtitle feature implementation excluded.",
+  "scratch_dir": "/private/tmp/transcriptor-review3-20261111-zkts7_jy",
+  "source_sha256": {
+    "app/utils.py": "720fd6dc0b0203fd912035bdaa131609abd6ff40b54f0e6124f1ac2fced88b09",
+    "app/main.py": "8dca5f45d9b5c4180c361ca6ddb0bf85bf3857c4a8a265b43a860dec6805e210",
+    "app/static/app.js": "cae4293ef5796c8a9a5cc857240ebd32cca48c3a788347f609413ddbb575ad53",
+    "macapp/Sources/Transcriptor/AppModel.swift": "2db82c7176fc7ce6ade118584cdc3daf6fec8e83c476454d380947b6e8f35aec",
+    "macapp/Sources/Transcriptor/APIClient.swift": "fcd2ce183565768a7c965e9ba23135c5e0fde3c79040b31d920bebe48773e584",
+    "macapp/Sources/Transcriptor/Models.swift": "17e34d12e13bbce5c83e22c3d827baa38b422115822c272554174d8b6a45a7f2",
+    "macapp/Sources/Transcriptor/BackendManager.swift": "f0aefa2f232ce3f9e0e43d507d8a54bd5e49fc98431a289cfb65e6a7a0faa16c",
+    "tests/test_jobs.py": "d2217c323ed115f9aacbe1be6833e25518a4f4771d5db47eec9ad4c7c49a6821",
+    "tests/native/AppModelRaceProbe.swift": "9ec8e47e9ee5053300a052a57ea18c4a144f100919d414906a4f3ba6a9d7752a",
+    "tests/web_state_probe.js": "660849ec3cf1861a48a45f78db80cd64fefcc4f51d78b1702d8d2fb69715c2b4"
+  }
+}

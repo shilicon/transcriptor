@@ -1,0 +1,26 @@
+{
+  "duration": {
+    "loader": "accepted",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 200,
+    "corrupt": false,
+    "original_file_unchanged": true
+  },
+  "paragraph": {
+    "loader": "accepted",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 200,
+    "corrupt": false,
+    "original_file_unchanged": true
+  },
+  "chapter": {
+    "loader": "accepted",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 200,
+    "corrupt": false,
+    "original_file_unchanged": true
+  }
+}

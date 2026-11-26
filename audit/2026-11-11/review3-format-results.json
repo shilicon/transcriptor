@@ -1,0 +1,22 @@
+{
+  "healthy": {
+    "exit_code": 0,
+    "stdout": "10 秒\n00:00",
+    "diagnostic": ""
+  },
+  "duration": {
+    "exit_code": -5,
+    "stdout": "",
+    "diagnostic": "Swift/arm64e-apple-macos.swiftinterface:45782: Fatal error: Double value cannot be converted to Int because the result would be greater than Int.max"
+  },
+  "paragraph": {
+    "exit_code": -5,
+    "stdout": "",
+    "diagnostic": "Swift/arm64e-apple-macos.swiftinterface:45782: Fatal error: Double value cannot be converted to Int because the result would be greater than Int.max"
+  },
+  "chapter": {
+    "exit_code": -5,
+    "stdout": "",
+    "diagnostic": "Swift/arm64e-apple-macos.swiftinterface:45782: Fatal error: Double value cannot be converted to Int because the result would be greater than Int.max"
+  }
+}

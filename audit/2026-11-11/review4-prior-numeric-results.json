@@ -1,0 +1,26 @@
+{
+  "duration": {
+    "loader": "JobDataError",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 422,
+    "corrupt": true,
+    "original_file_unchanged": true
+  },
+  "paragraph": {
+    "loader": "JobDataError",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 422,
+    "corrupt": true,
+    "original_file_unchanged": true
+  },
+  "chapter": {
+    "loader": "JobDataError",
+    "startup": "ok",
+    "list_status": 200,
+    "detail_status": 422,
+    "corrupt": true,
+    "original_file_unchanged": true
+  }
+}

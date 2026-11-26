@@ -34,8 +34,10 @@ DEFAULT_DEEPSEEK_MODEL = os.environ.get(
 )
 DEFAULT_AI_CORRECTION = os.environ.get("TRANSCRIPTOR_AI_CORRECTION", "1") == "1"
 DEFAULT_CHAPTERS = os.environ.get("TRANSCRIPTOR_CHAPTERS", "1") == "1"
+DEFAULT_GLOSSARY = os.environ.get("TRANSCRIPTOR_GLOSSARY", "0") == "1"
 
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024  # 4 GB
+MAX_TIME_SECONDS = 30 * 24 * 60 * 60  # 30 days; must stay safe for Swift Int formatting
 ALLOWED_EXTENSIONS = {
     ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus",
     ".mp4", ".mov", ".mkv", ".webm", ".m4v",

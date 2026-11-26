@@ -7,6 +7,17 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <div id="auth-gate" class="auth-gate hidden">
+    <div class="auth-card">
+      <div class="eyebrow">本地会话</div>
+      <h2>登录 Transcriptor</h2>
+      <p class="muted">输入本机 <code>data/.session-token</code> 中的会话凭据。原生 App 不需要这一步。</p>
+      <input id="session-token" type="password" placeholder="会话凭据" autocomplete="off">
+      <button id="session-login" class="primary wide">登录</button>
+      <p id="auth-error" class="auth-error"></p>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="brand">
       <span class="logo">T</span>
@@ -79,6 +90,11 @@
             <summary>高级设置</summary>
             <label class="field">初始提示词
               <input id="initial-prompt" type="text" placeholder="可选，例如人名、产品名">
+            </label>
+            <label class="field checkbox-field">
+              <span>领域术语校正</span>
+              <span class="hint">默认关闭。仅在 EDA / 芯片等专业访谈中开启。</span>
+              <input id="glossary" type="checkbox">
             </label>
           </details>
 

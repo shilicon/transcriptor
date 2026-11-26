@@ -1,0 +1,18 @@
+{
+  "save_response_after_reconciliation" : {
+    "busy_after_all_responses" : false,
+    "calls_before_manual_refresh" : [
+      "GET \/api\/jobs\/A",
+      "POST \/api\/jobs\/A\/chapters\/auto",
+      "PUT \/api\/jobs\/A\/paragraphs",
+      "GET \/api\/jobs\/A",
+      "GET \/api\/jobs",
+      "GET \/api\/jobs\/A",
+      "GET \/api\/jobs"
+    ],
+    "chapters_after_delayed_save" : 1,
+    "chapters_after_manual_refresh" : 1,
+    "chapters_after_reconciliation" : 1,
+    "text_after_all_responses" : "newer saved text"
+  }
+}

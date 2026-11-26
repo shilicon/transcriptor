@@ -1,0 +1,5 @@
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：created_at 不是字符串
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：title 不是字符串
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：progress 不是 0–100 的有限数字
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：stats 包含负数或非客户端整数
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：correction.enabled 不是布尔值

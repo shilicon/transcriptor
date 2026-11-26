@@ -9,18 +9,18 @@ SPEAKER_COLORS = ["#0f766e", "#b45309", "#1d4ed8", "#9d174d"]
 
 # Common ASR variants seen in Cadence/EDA interviews.  These are intentionally
 # conservative: only replace forms that are very unlikely to be ordinary words.
-GLOSSARY: list[tuple[str, str]] = [
-    (r"kaden'?s|kadence|cades|cadence", "Cadence"),
-    (r"cadence\s+simulation\s+conference", "Cadence Simulation Conference"),
+GLOSSARY: list[tuple[str, str | Callable[[re.Match[str]], str]]] = [
+    (r"\b(?:kaden'?s|kadence|cades|cadence)\b", "Cadence"),
+    (r"\bcadence\s+simulation\s+conference\b", "Cadence Simulation Conference"),
     (r"\bcomms driving\b", "autonomous driving"),
-    (r"chip\s*stack", "ChipStack"),
-    (r"inno\s*stack", "InnoStack"),
-    (r"vira\s*stack|avera\s*stack", "ViraStack"),
-    (r"aura\s*stack|orastac", "AuraStack"),
-    (r"system\s*stack", "SystemStack"),
-    (r"sigridi", "Sigrity"),
-    (r"inno\s*vis", "Innovus"),
-    (r"celsius\s*easy|celsius\s*ec", "Celsius EC"),
+    (r"\bchip\s*stack\b", "ChipStack"),
+    (r"\binno\s*stack\b", "InnoStack"),
+    (r"\b(?:vira\s*stack|avera\s*stack)\b", "ViraStack"),
+    (r"\b(?:aura\s*stack|orastac)\b", "AuraStack"),
+    (r"\bsystem\s*stack\b", "SystemStack"),
+    (r"\bsigridi\b", "Sigrity"),
+    (r"\binno\s*vis\b", "Innovus"),
+    (r"\b(?:celsius\s*easy|celsius\s*ec)\b", "Celsius EC"),
     (r"\bastran\b", "Nastran"),
     (r"\bmujoco\b", "MuJoCo"),
     (r"\bbeta\s*cae\b", "BETA CAE"),
@@ -71,11 +71,12 @@ def _ensure_terminal_punctuation(text: str, language: str | None) -> str:
     return text
 
 
-def clean_text(text: str, language: str | None = None) -> str:
+def clean_text(text: str, language: str | None = None, glossary: bool = False) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return text
-    text = apply_glossary(text)
+    if glossary:
+        text = apply_glossary(text)
     # Remove accidental comma-separated duplicate words ("dynamics, dynamics").
     text = re.sub(r"\b([A-Za-z]{5,}),\s+\1\b", r"\1", text, flags=re.IGNORECASE)
     text = re.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "I", text)
@@ -121,8 +122,15 @@ def build_paragraphs(
     max_sentences: int = 10,
     max_duration: float = 120.0,
     pause_split: float = 5.0,
+    glossary: bool = False,
 ) -> list[dict[str, Any]]:
-    """Merge consecutive segments by speaker and split very long turns."""
+    """Merge consecutive segments by speaker and split very long turns.
+
+    ``raw_text`` is the untouched ASR text for the paragraph.  ``text`` and
+    ``formatted_text`` contain the deterministic formatting result.  Domain
+    glossary substitution is opt-in because it is not safe for general
+    interviews.
+    """
     paragraphs: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
 
@@ -130,10 +138,13 @@ def build_paragraphs(
         nonlocal current
         if not current:
             return
-        text = clean_text(" ".join(current.pop("_texts")), language)
+        raw_text = " ".join(current.pop("_texts")).strip()
+        text = clean_text(raw_text, language, glossary=glossary)
         current.pop("_sentences", None)
         current["segment_indices"] = current.pop("_segment_indices", [])
         if text:
+            current["raw_text"] = raw_text
+            current["formatted_text"] = text
             current["text"] = text
             paragraphs.append(current)
         current = None

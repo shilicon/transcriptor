@@ -25,9 +25,25 @@ MAX_BATCH = 15
 MAX_EDITS_PER_PARAGRAPH = 5
 MIN_CONFIDENCE = 0.9
 MAX_WORD_SPAN = 6
+MAX_SPAN_UNITS = 8
+CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+LATIN_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’\-][A-Za-z0-9]+)*")
+NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|none|nothing|neither|nor|cannot|"
+    r"can['’]t|won['’]t|wouldn['’]t|shouldn['’]t|couldn['’]t|mustn['’]t|"
+    r"isn['’]t|aren['’]t|wasn['’]t|weren['’]t|don['’]t|doesn['’]t|didn['’]t|"
+    r"hasn['’]t|haven['’]t|hadn['’]t)\b"
+    r"|不能|不可以|不会|不要|不得|不该|不用|没有|没能|无法|并非|不是|"
+    r"禁止|避免|未|没|无|非|否|别|莫|勿|不",
+    re.IGNORECASE,
+)
 
 
 class CorrectionError(RuntimeError):
+    pass
+
+
+class CorrectionCancelled(RuntimeError):
     pass
 
 
@@ -112,8 +128,37 @@ def _sentence_count(text: str) -> int:
     return max(1, len(re.findall(r"[.!?。！？]+", text or "")))
 
 
-def _numbers(text: str) -> set[str]:
-    return set(re.findall(r"\d+(?:[.,]\d+)?%?", text or ""))
+def _numbers(text: str) -> list[str]:
+    """Ordered numeric sequence, including repeats and signs.
+
+    Comparing sets loses both order and multiplicity; the sequence is the
+    protected invariant for local corrections.
+    """
+    return re.findall(r"[+-]?\d+(?:[.,]\d+)?%?", text or "")
+
+
+def _span_units(text: str) -> int:
+    """Count Latin words and CJK characters without relying on spaces."""
+    return len(LATIN_TOKEN_RE.findall(text or "")) + len(CJK_RE.findall(text or ""))
+
+
+def _negation_tokens(text: str) -> list[str]:
+    return [match.group(0).lower() for match in NEGATION_RE.finditer(text or "")]
+
+
+def _is_adjacent_duplicate(original: str, replacement: str) -> bool:
+    original = (original or "").strip()
+    replacement = (replacement or "").strip()
+    if not original or not replacement:
+        return False
+    if original.lower() == replacement.lower():
+        return False
+    separators = r"[\s,，、;；:：.!?。！？\-]*"
+    pattern = re.compile(
+        rf"^{re.escape(replacement)}{separators}{re.escape(replacement)}$",
+        re.IGNORECASE,
+    )
+    return bool(pattern.match(original))
 
 
 def _similarity(a: str, b: str) -> float:
@@ -156,12 +201,19 @@ def _validate_edit(
         if _normalized_words(original) != _normalized_words(replacement):
             return None
     elif edit_type == "duplicate":
-        if _normalized_words(replacement) not in _normalized_words(original):
-            return None
         if len(_normalized_words(replacement)) >= len(_normalized_words(original)):
             return None
+        if not _is_adjacent_duplicate(original, replacement):
+            return None
     else:
-        if len(original.split()) > MAX_WORD_SPAN or len(replacement.split()) > MAX_WORD_SPAN:
+        if (
+            _span_units(original) > MAX_SPAN_UNITS
+            or _span_units(replacement) > MAX_SPAN_UNITS
+            or len(original.split()) > MAX_WORD_SPAN
+            or len(replacement.split()) > MAX_WORD_SPAN
+        ):
+            return None
+        if _negation_tokens(original) != _negation_tokens(replacement):
             return None
         if _similarity(original, replacement) < 0.45 and not _is_glossary(replacement):
             return None
@@ -195,6 +247,8 @@ def _validate_edit(
     if len(candidate) and not (min_ratio <= len(candidate) / max(1, len(text)) <= 1.20):
         return None
     if _numbers(candidate) != _numbers(text):
+        return None
+    if _negation_tokens(candidate) != _negation_tokens(text):
         return None
 
     return position, position + len(original), edit_type
@@ -243,6 +297,7 @@ def _apply_edits(paragraph: dict[str, Any], edits: list[dict[str, Any]]) -> tupl
 
     if accepted:
         paragraph["original_text"] = original_text
+        paragraph["ai_text"] = paragraph["text"]
         paragraph["correction_edits"] = accepted
         paragraph["correction_status"] = "corrected"
     else:
@@ -251,12 +306,18 @@ def _apply_edits(paragraph: dict[str, Any], edits: list[dict[str, Any]]) -> tupl
     return len(accepted), accepted
 
 
+def _ensure_not_cancelled(should_cancel: Callable[[], bool] | None) -> None:
+    if should_cancel and should_cancel():
+        raise CorrectionCancelled("任务已删除，停止后续 AI 校正")
+
+
 def _call_chat(
     paragraphs: list[dict[str, Any]],
     speakers: dict[str, str],
     api_key: str,
     base_url: str,
     model: str,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     payload = {
         "model": model or DEFAULT_DEEPSEEK_MODEL,
@@ -280,12 +341,17 @@ def _call_chat(
 
     last_error: Exception | None = None
     for attempt in range(3):
+        _ensure_not_cancelled(should_cancel)
         try:
             with httpx.Client(timeout=120) as client:
+                _ensure_not_cancelled(should_cancel)
                 response = client.post(url, headers=headers, json=payload)
+                _ensure_not_cancelled(should_cancel)
                 if response.status_code == 400 and "response_format" in payload:
                     payload.pop("response_format", None)
+                    _ensure_not_cancelled(should_cancel)
                     response = client.post(url, headers=headers, json=payload)
+                    _ensure_not_cancelled(should_cancel)
                 if response.status_code in {429, 500, 502, 503, 504}:
                     raise httpx.HTTPStatusError(
                         f"DeepSeek HTTP {response.status_code}",
@@ -298,12 +364,16 @@ def _call_chat(
                     detail = response.text[:500]
                     raise CorrectionError(f"DeepSeek 请求失败（HTTP {response.status_code}）：{detail}")
                 data = response.json()
+        except CorrectionCancelled:
+            raise
         except CorrectionError:
             raise
         except Exception as exc:
             last_error = exc
             if attempt < 2:
+                _ensure_not_cancelled(should_cancel)
                 time.sleep(2 * (attempt + 1))
+                _ensure_not_cancelled(should_cancel)
                 continue
             raise CorrectionError(f"无法连接 DeepSeek API：{exc}") from exc
 
@@ -332,6 +402,7 @@ def correct_paragraphs(
     base_url: str = "",
     model: str = "",
     progress: ProgressFn | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     if not api_key:
         raise CorrectionError(
@@ -347,13 +418,26 @@ def correct_paragraphs(
     total = len(paragraphs)
 
     for offset in range(0, total, MAX_BATCH):
+        if should_cancel and should_cancel():
+            raise CorrectionCancelled("任务已删除，停止后续 AI 校正")
         batch = paragraphs[offset: offset + MAX_BATCH]
         batches += 1
         try:
-            edits, _usage = _call_chat(batch, speakers, api_key, base_url, model)
+            edits, _usage = _call_chat(
+                batch,
+                speakers,
+                api_key,
+                base_url,
+                model,
+                should_cancel=should_cancel,
+            )
+        except CorrectionCancelled:
+            raise
         except CorrectionError as exc:
             errors.append(str(exc))
             continue
+        if should_cancel and should_cancel():
+            raise CorrectionCancelled("任务已删除，停止应用 AI 校正")
 
         by_id = {p["id"]: p for p in batch}
         grouped: dict[str, list[dict[str, Any]]] = {}

@@ -1,0 +1,22 @@
+{
+  "healthy": {
+    "exit_code": 0,
+    "stdout": "10 秒\n00:00",
+    "diagnostic": ""
+  },
+  "duration": {
+    "exit_code": 0,
+    "stdout": "未知时长",
+    "diagnostic": ""
+  },
+  "paragraph": {
+    "exit_code": 0,
+    "stdout": "00:00",
+    "diagnostic": ""
+  },
+  "chapter": {
+    "exit_code": 0,
+    "stdout": "00:00",
+    "diagnostic": ""
+  }
+}

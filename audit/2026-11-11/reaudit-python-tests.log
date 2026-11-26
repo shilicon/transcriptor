@@ -1,0 +1,55 @@
+test_accept_chinese_local_correction (test_correction.CorrectionValidationTests.test_accept_chinese_local_correction) ... ok
+test_cancellation_stops_following_batches (test_correction.CorrectionValidationTests.test_cancellation_stops_following_batches) ... ok
+test_duplicate_word (test_correction.CorrectionValidationTests.test_duplicate_word) ... ok
+test_missing_api_key (test_correction.CorrectionValidationTests.test_missing_api_key) ... ok
+test_proper_noun (test_correction.CorrectionValidationTests.test_proper_noun) ... ok
+test_punctuation_boundary (test_correction.CorrectionValidationTests.test_punctuation_boundary) ... ok
+test_reject_chinese_negation_change (test_correction.CorrectionValidationTests.test_reject_chinese_negation_change) ... ok
+test_reject_chinese_sentence_rewrite (test_correction.CorrectionValidationTests.test_reject_chinese_sentence_rewrite) ... ok
+test_reject_full_sentence_rewrite (test_correction.CorrectionValidationTests.test_reject_full_sentence_rewrite) ... ok
+test_reject_negation_deletion (test_correction.CorrectionValidationTests.test_reject_negation_deletion) ... ok
+test_reject_number_change (test_correction.CorrectionValidationTests.test_reject_number_change) ... ok
+test_reject_number_count_change (test_correction.CorrectionValidationTests.test_reject_number_count_change) ... ok
+test_reject_number_reordering (test_correction.CorrectionValidationTests.test_reject_number_reordering) ... ok
+test_clean_text_does_not_apply_glossary_by_default (test_formatting.FormattingSafetyTests.test_clean_text_does_not_apply_glossary_by_default) ... ok
+test_decades_is_not_replaced_with_glossary_off (test_formatting.FormattingSafetyTests.test_decades_is_not_replaced_with_glossary_off) ... ok
+test_decades_is_not_replaced_with_glossary_on (test_formatting.FormattingSafetyTests.test_decades_is_not_replaced_with_glossary_on) ... ok
+test_glossary_is_opt_in_and_keeps_raw_text (test_formatting.FormattingSafetyTests.test_glossary_is_opt_in_and_keeps_raw_text) ... ok
+test_paragraph_segment_indices_are_kept (test_formatting.FormattingSafetyTests.test_paragraph_segment_indices_are_kept) ... ok
+test_chapter_response_preserves_text_and_speaker_edits (test_jobs.ChapterConcurrencyTests.test_chapter_response_preserves_text_and_speaker_edits) ... ok
+test_deleted_job_does_not_get_chapters_or_files (test_jobs.ChapterConcurrencyTests.test_deleted_job_does_not_get_chapters_or_files) ... ok
+test_corrupt_job_does_not_block_startup (test_jobs.CorruptJobTests.test_corrupt_job_does_not_block_startup) ... ok
+test_legacy_job_does_not_claim_raw_transcript (test_jobs.CorruptJobTests.test_legacy_job_does_not_claim_raw_transcript) ... ok
+test_list_jobs_isolates_corrupt_entries (test_jobs.CorruptJobTests.test_list_jobs_isolates_corrupt_entries) ... ok
+test_delete_corrupt_job_removes_files (test_jobs.JobLifecycleTests.test_delete_corrupt_job_removes_files) ... ok
+test_queued_job_delete_never_runs (test_jobs.JobLifecycleTests.test_queued_job_delete_never_runs) ... ok
+test_running_job_delete_does_not_resurrect (test_jobs.JobLifecycleTests.test_running_job_delete_does_not_resurrect) ... ok
+test_pipeline_keeps_raw_asr_text_separate_from_glossary (test_jobs.PipelineRawTextTests.test_pipeline_keeps_raw_asr_text_separate_from_glossary) ... ok
+test_undo_restores_only_ai_corrected_paragraphs (test_jobs.UndoCorrectionTests.test_undo_restores_only_ai_corrected_paragraphs) ... ok
+test_allowed_origin_is_accepted (test_security.LocalAPISecurityTests.test_allowed_origin_is_accepted) ... ok
+test_api_requires_token (test_security.LocalAPISecurityTests.test_api_requires_token) ... ok
+test_browser_cookie_authenticates (test_security.LocalAPISecurityTests.test_browser_cookie_authenticates) ... ok
+test_different_local_origin_port_is_rejected (test_security.LocalAPISecurityTests.test_different_local_origin_port_is_rejected) ... ok
+test_health_is_public (test_security.LocalAPISecurityTests.test_health_is_public) ... ok
+test_native_header_authenticates_without_origin (test_security.LocalAPISecurityTests.test_native_header_authenticates_without_origin) ... ok
+test_token_file_is_private_and_not_exposed (test_security.LocalAPISecurityTests.test_token_file_is_private_and_not_exposed) ... ok
+test_untrusted_host_is_rejected (test_security.LocalAPISecurityTests.test_untrusted_host_is_rejected) ... ok
+test_untrusted_origin_is_rejected (test_security.LocalAPISecurityTests.test_untrusted_origin_is_rejected) ... ok
+test_server_rejects_oversized_content_length_before_reading (test_security.UploadBoundaryTests.test_server_rejects_oversized_content_length_before_reading) ... ok
+test_upload_rejects_without_token (test_security.UploadBoundaryTests.test_upload_rejects_without_token) ... ok
+test_upload_uses_header_key_and_never_writes_it (test_security.UploadBoundaryTests.test_upload_uses_header_key_and_never_writes_it) ... ok
+test_fallback_to_paragraphs (test_subtitles.SubtitleExportTests.test_fallback_to_paragraphs) ... ok
+test_long_segment_is_split (test_subtitles.SubtitleExportTests.test_long_segment_is_split) ... ok
+test_srt_format (test_subtitles.SubtitleExportTests.test_srt_format) ... ok
+test_sync_after_text_edit (test_subtitles.SubtitleExportTests.test_sync_after_text_edit) ... ok
+test_sync_updates_speaker (test_subtitles.SubtitleExportTests.test_sync_updates_speaker) ... ok
+test_vtt_format (test_subtitles.SubtitleExportTests.test_vtt_format) ... ok
+test_accepts_common_youtube_urls (test_subtitles.YouTubeURLTests.test_accepts_common_youtube_urls) ... ok
+test_download_only_requests_audio (test_subtitles.YouTubeURLTests.test_download_only_requests_audio) ... ok
+test_rejects_non_youtube_and_playlists (test_subtitles.YouTubeURLTests.test_rejects_non_youtube_and_playlists) ... ok
+
+----------------------------------------------------------------------
+Ran 49 tests in 0.186s
+
+OK
+[transcriptor] skipping corrupt job broken-startup: 任务 broken-startup 的数据文件损坏：Expecting property name enclosed in double quotes: line 1 column 2 (char 1)

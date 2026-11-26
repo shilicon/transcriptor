@@ -1,0 +1,131 @@
+{
+  "chapter_response_before_save": {
+    "after_chapter_refresh": {
+      "state_text": "newer saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "newer saved text",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "POST /api/jobs/A/chapters/auto",
+        "PUT /api/jobs/A/paragraphs",
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    },
+    "after_all_responses": {
+      "state_text": "newer saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "newer saved text",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "POST /api/jobs/A/chapters/auto",
+        "PUT /api/jobs/A/paragraphs",
+        "GET /api/jobs/A",
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    },
+    "after_explicit_refresh": {
+      "state_text": "newer saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "newer saved text",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "POST /api/jobs/A/chapters/auto",
+        "PUT /api/jobs/A/paragraphs",
+        "GET /api/jobs/A",
+        "GET /api/jobs/A",
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    },
+    "after_exit_editing": {
+      "state_text": "newer saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": false,
+      "draft_text": null,
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "POST /api/jobs/A/chapters/auto",
+        "PUT /api/jobs/A/paragraphs",
+        "GET /api/jobs/A",
+        "GET /api/jobs/A",
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    },
+    "server_chapters": 1
+  },
+  "draft_during_refresh": {
+    "after_first": {
+      "state_text": "saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "unsaved during refresh",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    },
+    "after_recovery": {
+      "state_text": "saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "unsaved during refresh",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "GET /api/jobs/A"
+      ],
+      "warnings": []
+    }
+  },
+  "refresh_failure_recovery": {
+    "after_first": {
+      "state_text": "original text",
+      "state_chapters": 0,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "unsaved during refresh",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "GET /api/jobs/A"
+      ],
+      "warnings": [
+        "Error: synthetic refresh failure"
+      ]
+    },
+    "after_recovery": {
+      "state_text": "saved text",
+      "state_chapters": 1,
+      "rendered_chapter_rows": 0,
+      "editing": true,
+      "draft_text": "unsaved during refresh",
+      "chapter_busy": false,
+      "renders": [],
+      "calls": [
+        "GET /api/jobs/A",
+        "GET /api/jobs/A"
+      ],
+      "warnings": [
+        "Error: synthetic refresh failure"
+      ]
+    }
+  }
+}

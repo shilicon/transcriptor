@@ -44,6 +44,8 @@ struct JobDetailView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear(perform: syncSpeakerNames)
         .onChange(of: current.speakers) { _, _ in syncSpeakerNames() }
+        .onChange(of: model.draftParagraphs) { _, _ in model.markDraftChanged() }
+        .onChange(of: model.draftSpeakerIds) { _, _ in model.markDraftChanged() }
         .alert("删除这个任务？", isPresented: $showDeleteConfirm) {
             Button("删除", role: .destructive) {
                 Task { await model.deleteCurrentJob() }
@@ -58,7 +60,7 @@ struct JobDetailView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("所有段落会恢复为 ASR 原始转写。")
+            Text("只会恢复由 AI 自动修改、且之后未被人工编辑的段落。人工修改会保留。")
         }
     }
 
@@ -234,7 +236,7 @@ struct JobDetailView: View {
         case "unchanged":
             return "DeepSeek 没有发现需要自动修正的明显错误。"
         case "undone":
-            return "已恢复为 ASR 原始转写。"
+            return "已恢复 AI 修改前的整理文本；人工编辑保留。"
         default:
             return "AI 校正未启用。"
         }
@@ -325,6 +327,7 @@ struct JobDetailView: View {
                     )
                 case .chapters:
                     ChaptersView(job: current)
+                        .id(current.id)
                 }
             }
         }

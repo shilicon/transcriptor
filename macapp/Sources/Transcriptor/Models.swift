@@ -37,6 +37,7 @@ struct JobSettings: Codable, Hashable {
     var initialPrompt: String?
     var aiCorrection: Bool?
     var chapters: Bool?
+    var glossary: Bool?
     var deepseekBaseUrl: String?
     var deepseekModel: String?
 }
@@ -81,6 +82,8 @@ struct JobSummary: Codable, Identifiable, Hashable {
     var createdAt: String?
     var duration: Double?
     var stats: Stats?
+    var error: String?
+    var corrupt: Bool?
 
     var statusValue: JobStatus { JobStatus(rawValue: status) ?? .queued }
 }
@@ -115,6 +118,7 @@ struct AppConfig: Codable {
     var defaultModel: String
     var aiCorrectionDefault: Bool?
     var chaptersDefault: Bool?
+    var glossaryDefault: Bool?
     var deepseekBaseUrl: String?
     var deepseekModel: String?
     var deepseekConfigured: Bool?
@@ -164,11 +168,13 @@ struct AutoChaptersPayload: Codable {
     var endpoint: String
     var model: String
     var titleLanguage: String
+    var apiKey: String
 
     enum CodingKeys: String, CodingKey {
         case endpoint
         case model
         case titleLanguage = "title_language"
+        case apiKey = "api_key"
     }
 }
 
@@ -182,6 +188,7 @@ struct URLJobPayload: Codable {
     var initialPrompt: String
     var aiCorrection: Bool
     var chapters: Bool
+    var glossary: Bool
     var deepseekBaseUrl: String
     var deepseekModel: String
     var deepseekApiKey: String
@@ -193,6 +200,7 @@ struct URLJobPayload: Codable {
         case language
         case model
         case chapters
+        case glossary
         case numSpeakers = "num_speakers"
         case initialPrompt = "initial_prompt"
         case aiCorrection = "ai_correction"
@@ -208,14 +216,23 @@ struct APIError: LocalizedError {
 }
 
 enum Format {
+    // Keep in sync with app/config.py MAX_TIME_SECONDS (30 days).
+    static let maxDisplaySeconds: Double = 30 * 24 * 60 * 60
+
     static func timestamp(_ seconds: Double?) -> String {
-        guard let seconds, seconds.isFinite, seconds >= 0 else { return "00:00" }
+        guard let seconds,
+              seconds.isFinite,
+              seconds >= 0,
+              seconds <= maxDisplaySeconds else { return "00:00" }
         let total = Int(seconds)
         return String(format: "%02d:%02d", total / 60, total % 60)
     }
 
     static func duration(_ seconds: Double?) -> String {
-        guard let seconds, seconds.isFinite, seconds >= 0 else { return "未知时长" }
+        guard let seconds,
+              seconds.isFinite,
+              seconds >= 0,
+              seconds <= maxDisplaySeconds else { return "未知时长" }
         let total = Int(seconds.rounded())
         let h = total / 3600
         let m = (total % 3600) / 60

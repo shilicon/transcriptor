@@ -1,0 +1,141 @@
+{
+  "negation": [
+    {
+      "before": "我不赞成这个方案。",
+      "after": "我不赞成这个方案。",
+      "accepted": 0
+    },
+    {
+      "before": "这个操作不安全。",
+      "after": "这个操作不安全。",
+      "accepted": 0
+    },
+    {
+      "before": "This change is not safe for customers.",
+      "after": "This change is not safe for customers.",
+      "accepted": 0
+    }
+  ],
+  "anonymous_home": {
+    "before_root": 401,
+    "root": 200,
+    "root_issues_session_cookie": false,
+    "after_root": 401,
+    "delete_status": 401,
+    "victim_exists_after_delete": true
+  },
+  "retry_after_delete": [
+    {
+      "first_status": 503,
+      "requests": [
+        {
+          "after_delete": false,
+          "contains_transcript": true
+        }
+      ],
+      "outcome": "cancelled-after-http"
+    },
+    {
+      "first_status": 400,
+      "requests": [
+        {
+          "after_delete": false,
+          "contains_transcript": true
+        }
+      ],
+      "outcome": "cancelled-after-http"
+    }
+  ],
+  "extract_after_delete": {
+    "exists_immediately_after_delete": false,
+    "exists_after_worker_finishes": false,
+    "job_json_recreated": false,
+    "remaining_files": []
+  },
+  "metadata": {
+    "created_at": {
+      "loader": "JobDataError",
+      "startup": "ok",
+      "list_status": 200,
+      "detail_status": 422,
+      "summary": {
+        "id": "damaged",
+        "title": "损坏的任务",
+        "status": "error",
+        "progress": 0,
+        "stage": "任务文件损坏",
+        "created_at": null,
+        "duration": null,
+        "stats": {},
+        "error": "created_at 不是字符串",
+        "corrupt": true
+      }
+    },
+    "title": {
+      "loader": "JobDataError",
+      "startup": "ok",
+      "list_status": 200,
+      "detail_status": 422,
+      "summary": {
+        "id": "damaged",
+        "title": "损坏的任务",
+        "status": "error",
+        "progress": 0,
+        "stage": "任务文件损坏",
+        "created_at": null,
+        "duration": null,
+        "stats": {},
+        "error": "title 不是字符串",
+        "corrupt": true
+      }
+    },
+    "progress": {
+      "loader": "OverflowError",
+      "startup": "OverflowError",
+      "list_status": 500,
+      "detail_status": 500
+    },
+    "stats": {
+      "loader": "accepted",
+      "startup": "ok",
+      "list_status": 200,
+      "detail_status": 200,
+      "summary": {
+        "id": "damaged",
+        "title": "Synthetic audit fixture",
+        "status": "done",
+        "progress": 100,
+        "stage": null,
+        "created_at": "2026-11-11T00:00:00+08:00",
+        "duration": 10,
+        "stats": {
+          "paragraphs": 9223372036854775808
+        },
+        "error": null,
+        "corrupt": false
+      }
+    },
+    "correction": {
+      "loader": "accepted",
+      "startup": "ok",
+      "list_status": 200,
+      "detail_status": 200,
+      "summary": {
+        "id": "damaged",
+        "title": "Synthetic audit fixture",
+        "status": "done",
+        "progress": 100,
+        "stage": null,
+        "created_at": "2026-11-11T00:00:00+08:00",
+        "duration": 10,
+        "stats": {
+          "segments": 1,
+          "paragraphs": 1,
+          "speakers": 1
+        },
+        "error": null,
+        "corrupt": false
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "A02_negation": [
+    {
+      "before": "我不赞成这个方案。",
+      "after": "我赞成这个方案。",
+      "accepted": 1
+    },
+    {
+      "before": "这个操作不安全。",
+      "after": "这个操作安全。",
+      "accepted": 1
+    },
+    {
+      "before": "This change is not safe for customers.",
+      "after": "This change is not safe for customers.",
+      "accepted": 0
+    }
+  ],
+  "A06_cookie_bootstrap": {
+    "before_root": 401,
+    "root": 200,
+    "root_issues_session_cookie": true,
+    "after_root": 200,
+    "delete_status": 200,
+    "victim_exists_after_delete": false
+  },
+  "A08_metadata": {
+    "created_at": {
+      "loader_accepts": true,
+      "list_status": 500,
+      "detail_status": 200
+    },
+    "title": {
+      "loader_accepts": true,
+      "list_status": 200,
+      "detail_status": 200,
+      "listed_as_corrupt": false,
+      "returned_title_type": "list"
+    }
+  },
+  "A04_retry": [
+    {
+      "first_status": 503,
+      "requests": [
+        {
+          "after_delete": false,
+          "contains_transcript": true
+        },
+        {
+          "after_delete": true,
+          "contains_transcript": true
+        }
+      ],
+      "outcome": "cancelled-after-http"
+    },
+    {
+      "first_status": 400,
+      "requests": [
+        {
+          "after_delete": false,
+          "contains_transcript": true
+        },
+        {
+          "after_delete": true,
+          "contains_transcript": true
+        }
+      ],
+      "outcome": "cancelled-after-http"
+    }
+  ],
+  "A04_extraction": {
+    "exists_immediately_after_delete": false,
+    "exists_after_worker_finishes": true,
+    "job_json_recreated": false,
+    "remaining_files": []
+  }
+}

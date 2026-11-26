@@ -14,6 +14,7 @@ macapp/.build/
 macapp/dist/
 
 data/macapp-backend.log
+data/.session-token*
 
 data/test-server.log
 data/test-server.pid

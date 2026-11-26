@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -104,9 +105,16 @@ def _outline(paragraphs: list[dict[str, Any]], speakers: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-def _discover_model(client: httpx.Client, base_url: str) -> str:
+def _discover_model(
+    client: httpx.Client,
+    base_url: str,
+    headers: dict[str, str] | None = None,
+) -> str:
     try:
-        response = client.get(f"{base_url.rstrip('/')}/models")
+        response = client.get(
+            f"{base_url.rstrip('/')}/models",
+            headers=headers or None,
+        )
         response.raise_for_status()
         data = response.json()
         models = data.get("data") or []
@@ -124,23 +132,92 @@ def _discover_model(client: httpx.Client, base_url: str) -> str:
     return ""
 
 
-def _extract_json(text: str) -> Any:
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
+_MISSING = object()
+
+
+def _json_loads(text: str) -> Any:
     try:
         return json.loads(text)
     except Exception:
-        pass
-    start = text.find("[")
-    end = text.rfind("]")
-    if start >= 0 and end > start:
-        return json.loads(text[start:end + 1])
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        return json.loads(text[start:end + 1])
-    raise ChapterError("AI 返回的内容不是有效 JSON。")
+        return _MISSING
+
+
+def _without_trailing_commas(text: str) -> str:
+    return re.sub(r",(\s*[}\]])", r"\1", text)
+
+
+def _balanced_json(text: str, start: int) -> str | None:
+    """Return the complete JSON object/array beginning at ``start``."""
+    opener = text[start]
+    closer = "]" if opener == "[" else "}"
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    return None
+
+
+def _parse_json_candidate(candidate: str) -> Any:
+    for value in (candidate, _without_trailing_commas(candidate)):
+        parsed = _json_loads(value)
+        if parsed is not _MISSING:
+            if isinstance(parsed, str):
+                nested = _json_loads(parsed)
+                if nested is not _MISSING:
+                    return nested
+            return parsed
+    return _MISSING
+
+
+def _extract_json(text: str) -> Any:
+    text = (text or "").lstrip("\ufeff").strip()
+    candidates = [text]
+    candidates.extend(
+        match.group(1).strip()
+        for match in re.finditer(
+            r"```(?:json)?\s*(.*?)```",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    )
+    for candidate in candidates:
+        parsed = _parse_json_candidate(candidate)
+        if parsed is not _MISSING:
+            return parsed
+
+    # Models sometimes explain their answer before the JSON and mention
+    # timestamps such as "[00:00]".  Try every balanced object/array instead
+    # of blindly taking the first "[" and last "]".
+    for opener in ("[", "{"):
+        offset = 0
+        while True:
+            start = text.find(opener, offset)
+            if start < 0:
+                break
+            block = _balanced_json(text, start)
+            if block:
+                parsed = _parse_json_candidate(block)
+                if parsed is not _MISSING:
+                    return parsed
+            offset = start + 1
+    raise ChapterError("AI 返回的内容不是有效 JSON。请重试。")
 
 
 def _snap_start(value: Any, paragraph_starts: list[float]) -> float:
@@ -159,6 +236,7 @@ def auto_chapters_llm(
     model: str = "",
     title_language: str = "zh",
     timeout: float = 180.0,
+    api_key: str = "",
 ) -> list[dict[str, Any]]:
     if not paragraphs:
         return []
@@ -173,8 +251,8 @@ def auto_chapters_llm(
     )
     system = (
         "You are an expert interview editor. You receive a timestamped transcript outline. "
-        "Divide it into 6 to 12 chapters. Return ONLY a JSON array, with no markdown fences. "
-        "Each item must have the shape {\"start\":\"MM:SS\",\"title\":\"...\"}. "
+        "Divide it into 6 to 12 chapters. Return ONLY a JSON object with the shape "
+        "{\"chapters\":[{\"start\":\"MM:SS\",\"title\":\"...\"}]}, with no markdown fences. "
         "The first chapter must start at 00:00. Every start timestamp must be one of the "
         "timestamps that appears in the outline. Do not repeat timestamps. "
         "Chapters should cover the whole interview in order. "
@@ -182,48 +260,116 @@ def auto_chapters_llm(
     )
     user = "Transcript outline:\n\n" + _outline(paragraphs, speakers)
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": model or "",
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         "temperature": 0.2,
-        "max_tokens": 1200,
+        "max_tokens": 2500,
+        "response_format": {"type": "json_object"},
     }
+    if (api_key or "").strip():
+        # DeepSeek reasoning models otherwise spend output tokens on
+        # reasoning_content, which can truncate the chapter JSON.
+        payload["thinking"] = {"type": "disabled"}
+    headers = (
+        {"Authorization": f"Bearer {api_key}"}
+        if (api_key or "").strip()
+        else {}
+    )
+    url = f"{endpoint}/chat/completions"
+    data: dict[str, Any] | None = None
+    last_error: Exception | None = None
 
     try:
         with httpx.Client(timeout=timeout) as client:
             if not payload["model"]:
-                payload["model"] = _discover_model(client, endpoint)
+                payload["model"] = _discover_model(client, endpoint, headers)
             if not payload["model"]:
                 raise ChapterError(
-                    "LLM 接口没有可用模型。请先在 LM Studio / Ollama 中加载一个模型。"
+                    "LLM 接口没有可用模型。请先在 LM Studio / Ollama 中加载一个模型，"
+                    "或在 DeepSeek 配置中填写模型 ID。"
                 )
-            response = client.post(f"{endpoint}/chat/completions", json=payload)
-            response.raise_for_status()
-            data = response.json()
+            for attempt in range(3):
+                try:
+                    response = client.post(url, json=payload, headers=headers or None)
+                    if response.status_code in {400, 422} and "thinking" in payload:
+                        # `thinking` is DeepSeek-specific; retain JSON mode if
+                        # the server supports it.
+                        payload.pop("thinking", None)
+                        response = client.post(
+                            url,
+                            json=payload,
+                            headers=headers or None,
+                        )
+                    if response.status_code in {400, 422} and "response_format" in payload:
+                        # Older OpenAI-compatible servers reject JSON mode.
+                        payload.pop("response_format", None)
+                        response = client.post(
+                            url,
+                            json=payload,
+                            headers=headers or None,
+                        )
+                    if response.status_code == 401:
+                        raise ChapterError("API Key 无效或已过期，请在设置中检查。")
+                    if response.status_code in {429, 500, 502, 503, 504}:
+                        raise httpx.HTTPStatusError(
+                            f"LLM HTTP {response.status_code}",
+                            request=response.request,
+                            response=response,
+                        )
+                    if response.status_code >= 400:
+                        detail = response.text[:300]
+                        raise ChapterError(
+                            f"AI 请求失败（HTTP {response.status_code}）：{detail}"
+                        )
+                    data = response.json()
+                    break
+                except ChapterError:
+                    raise
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < 2:
+                        time.sleep(2 * (attempt + 1))
+                        continue
+                    raise ChapterError(
+                        f"无法连接 LLM 接口：{exc}\n"
+                        "请确认 LM Studio / Ollama 的本地服务已启动，或检查 "
+                        "DeepSeek API Key、模型 ID 和 Base URL。"
+                    ) from exc
+            if data is None:
+                raise ChapterError(f"无法连接 LLM 接口：{last_error}")
     except ChapterError:
         raise
     except Exception as exc:
         raise ChapterError(
             f"无法连接 LLM 接口：{exc}\n"
-            "请确认 LM Studio / Ollama 的本地服务已启动，并填写正确的 OpenAI 兼容地址。"
+            "请确认 LM Studio / Ollama 的本地服务已启动，或检查 DeepSeek API Key、"
+            "模型 ID 和 Base URL。"
         ) from exc
 
-    message = data.get("choices", [{}])[0].get("message", {}) or {}
+    choices = data.get("choices") or [{}]
+    choice = choices[0] or {}
+    message = choice.get("message") or {}
     content = message.get("content") or message.get("reasoning_content") or ""
     if not content:
+        if choice.get("finish_reason") == "length":
+            raise ChapterError("AI 输出被截断，没有生成完整章节。请重试。")
         raise ChapterError(
             "LLM 没有返回章节内容。如果使用的是 Qwen 等推理模型，请换用非推理模型"
             "（例如 Gemma），或在 LM Studio 中关闭 thinking。"
         )
 
+    if choice.get("finish_reason") == "length":
+        raise ChapterError("AI 输出被截断，章节 JSON 不完整。请重试。")
+
     parsed = _extract_json(content)
     if isinstance(parsed, dict):
         parsed = parsed.get("chapters") or parsed.get("items") or []
     if not isinstance(parsed, list):
-        raise ChapterError("LLM 返回的章节格式不正确。")
+        raise ChapterError("AI 返回的章节格式不正确。")
 
     paragraph_starts = [float(p["start"]) for p in paragraphs]
     used_titles: set[str] = set()

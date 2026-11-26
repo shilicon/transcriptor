@@ -1,0 +1,44 @@
+{
+  "branch": "origin/codex/cli-support",
+  "integrated_commits": [
+    "2e21c94 feat: add full command-line transcription workflow",
+    "79a770a fix: allow GUI transcription without DeepSeek key"
+  ],
+  "cli_file_smoke": {
+    "id": "c64eecd033",
+    "title": "CLI 集成测试",
+    "status": "done",
+    "stage": "完成",
+    "progress": 100.0,
+    "error": null,
+    "exports": {
+      "md": "/private/var/folders/16/_qj4s9ds3yl4rc48w1slbp540000gn/T/opencode/cli-test/data/jobs/c64eecd033/transcript.md",
+      "docx": "/private/var/folders/16/_qj4s9ds3yl4rc48w1slbp540000gn/T/opencode/cli-test/data/jobs/c64eecd033/transcript.docx",
+      "srt": "/private/var/folders/16/_qj4s9ds3yl4rc48w1slbp540000gn/T/opencode/cli-test/data/jobs/c64eecd033/transcript.srt",
+      "vtt": "/private/var/folders/16/_qj4s9ds3yl4rc48w1slbp540000gn/T/opencode/cli-test/data/jobs/c64eecd033/transcript.vtt"
+    }
+  },
+  "cli_no_key_ai_correction": {
+    "status": "done",
+    "correction_status": "failed",
+    "correction_warning": "未配置 DeepSeek API Key。请在设置中填写，或关闭 AI 校正。"
+  },
+  "preserved_audit_behaviour": [
+    "streaming upload",
+    "glossary/raw_segments",
+    "session auth",
+    "per-job locks",
+    "time bounds",
+    "R02 snapshot ordering"
+  ],
+  "python_tests": 68,
+  "cli_export_smoke": {
+    "status": "done",
+    "outputs": [
+      "result.md",
+      "result.docx",
+      "result.srt",
+      "result.vtt"
+    ]
+  }
+}

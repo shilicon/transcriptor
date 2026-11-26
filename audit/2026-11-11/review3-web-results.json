@@ -1,0 +1,15 @@
+{
+  "refresh_after_newer_save": {
+    "calls": [
+      "PUT /api/jobs/A/speakers",
+      "PUT /api/jobs/A/paragraphs",
+      "GET /api/jobs/A"
+    ],
+    "after_save_response": "newer saved text",
+    "after_refresh_response": "original text",
+    "rendered_text": "original text",
+    "server_text": "newer saved text",
+    "editing": false,
+    "all_requests_completed": true
+  }
+}

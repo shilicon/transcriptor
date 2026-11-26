@@ -2,6 +2,7 @@ import Foundation
 
 struct APIClient {
     let baseURL = URL(string: "http://127.0.0.1:8765/api")!
+    var token: String?
 
     private var decoder: JSONDecoder {
         let decoder = JSONDecoder()
@@ -19,6 +20,9 @@ struct APIClient {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = method
         request.timeoutInterval = timeout
+        if let token, !token.isEmpty {
+            request.setValue(token, forHTTPHeaderField: "X-Transcriptor-Token")
+        }
         return request
     }
 
@@ -118,12 +122,14 @@ struct APIClient {
         _ id: String,
         endpoint: String,
         model: String,
-        titleLanguage: String
+        titleLanguage: String,
+        apiKey: String = ""
     ) async throws -> Job {
         let payload = AutoChaptersPayload(
             endpoint: endpoint,
             model: model,
-            titleLanguage: titleLanguage
+            titleLanguage: titleLanguage,
+            apiKey: apiKey
         )
         return try await send(
             "jobs/\(id)/chapters/auto",
@@ -143,9 +149,7 @@ struct APIClient {
     }
 
     func export(_ id: String, extension ext: String) async throws -> Data {
-        let url = baseURL.appendingPathComponent("jobs/\(id)/export.\(ext)")
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 120
+        let req = request(path: "jobs/\(id)/export.\(ext)", timeout: 120)
         let (data, response) = try await URLSession.shared.data(for: req)
         try check(response, data)
         return data
@@ -161,59 +165,97 @@ struct APIClient {
         initialPrompt: String,
         aiCorrection: Bool,
         chapters: Bool,
+        glossary: Bool,
         deepseekBaseURL: String,
         deepseekModel: String,
         deepseekAPIKey: String
     ) async throws -> String {
+        // URLs returned by SwiftUI's fileImporter can be security-scoped.
+        // Keep access alive while size checking and streaming the file.
+        let accessedSecurityScopedResource = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessedSecurityScopedResource {
+                fileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileSize = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let maxUploadBytes = 4 * 1024 * 1024 * 1024
+        if fileSize <= 0 {
+            throw APIError(message: "文件为空或无法读取。")
+        }
+        if fileSize > maxUploadBytes {
+            throw APIError(message: "文件超过 4 GB 限制。")
+        }
+
         let boundary = "Boundary-\(UUID().uuidString)"
-        var body = Data()
-
-        func append(_ string: String) {
-            body.append(string.data(using: .utf8) ?? Data())
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("transcriptor-upload-\(UUID().uuidString).multipart")
+        guard FileManager.default.createFile(atPath: tempURL.path, contents: nil) else {
+            throw APIError(message: "无法创建上传临时文件。")
         }
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        func appendField(_ name: String, _ value: String) {
-            append("--\(boundary)\r\n")
-            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-            append("\(value)\r\n")
+        let handle = try FileHandle(forWritingTo: tempURL)
+        do {
+            func append(_ string: String) throws {
+                try handle.write(contentsOf: Data(string.utf8))
+            }
+
+            func appendField(_ name: String, _ value: String) throws {
+                try append("--\(boundary)\r\n")
+                try append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+                try append("\(value)\r\n")
+            }
+
+            let filename = fileURL.lastPathComponent
+            let ext = fileURL.pathExtension.lowercased()
+            let mime: String
+            switch ext {
+            case "mp3": mime = "audio/mpeg"
+            case "wav": mime = "audio/wav"
+            case "m4a", "aac": mime = "audio/mp4"
+            case "mp4", "m4v": mime = "video/mp4"
+            case "mov": mime = "video/quicktime"
+            default: mime = "application/octet-stream"
+            }
+
+            try appendField("title", title)
+            try appendField("speakers", speakers)
+            try appendField("num_speakers", String(numSpeakers))
+            try appendField("language", language)
+            try appendField("model", model)
+            try appendField("initial_prompt", initialPrompt)
+            try appendField("ai_correction", aiCorrection ? "true" : "false")
+            try appendField("chapters", chapters ? "true" : "false")
+            try appendField("glossary", glossary ? "true" : "false")
+            try appendField("deepseek_base_url", deepseekBaseURL)
+            try appendField("deepseek_model", deepseekModel)
+
+            try append("--\(boundary)\r\n")
+            try append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+            try append("Content-Type: \(mime)\r\n\r\n")
+
+            let input = try FileHandle(forReadingFrom: fileURL)
+            defer { try? input.close() }
+            while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+                try handle.write(contentsOf: chunk)
+            }
+            try append("\r\n--\(boundary)--\r\n")
+            try handle.close()
+        } catch {
+            try? handle.close()
+            throw error
         }
-
-        let filename = fileURL.lastPathComponent
-        let ext = fileURL.pathExtension.lowercased()
-        let mime: String
-        switch ext {
-        case "mp3": mime = "audio/mpeg"
-        case "wav": mime = "audio/wav"
-        case "m4a", "aac": mime = "audio/mp4"
-        case "mp4", "m4v": mime = "video/mp4"
-        case "mov": mime = "video/quicktime"
-        default: mime = "application/octet-stream"
-        }
-
-        appendField("title", title)
-        appendField("speakers", speakers)
-        appendField("num_speakers", String(numSpeakers))
-        appendField("language", language)
-        appendField("model", model)
-        appendField("initial_prompt", initialPrompt)
-        appendField("ai_correction", aiCorrection ? "true" : "false")
-        appendField("chapters", chapters ? "true" : "false")
-        appendField("deepseek_base_url", deepseekBaseURL)
-        appendField("deepseek_model", deepseekModel)
-        if !deepseekAPIKey.isEmpty {
-            appendField("deepseek_api_key", deepseekAPIKey)
-        }
-
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
-        append("Content-Type: \(mime)\r\n\r\n")
-        body.append(try Data(contentsOf: fileURL, options: .mappedIfSafe))
-        append("\r\n--\(boundary)--\r\n")
 
         var req = request(path: "jobs", method: "POST", timeout: 600)
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-        let (data, response) = try await URLSession.shared.data(for: req)
+        if !deepseekAPIKey.isEmpty {
+            // Keep the API key out of the on-disk multipart body.  The backend
+            // accepts it through a request header and keeps it in memory only.
+            req.setValue(deepseekAPIKey, forHTTPHeaderField: "X-Transcriptor-DeepSeek-Key")
+        }
+        let (data, response) = try await URLSession.shared.upload(for: req, fromFile: tempURL)
         try check(response, data)
         return try decoder.decode(CreateJobResponse.self, from: data).id
     }
@@ -228,6 +270,7 @@ struct APIClient {
         initialPrompt: String,
         aiCorrection: Bool,
         chapters: Bool,
+        glossary: Bool,
         deepseekBaseURL: String,
         deepseekModel: String,
         deepseekAPIKey: String
@@ -242,6 +285,7 @@ struct APIClient {
             initialPrompt: initialPrompt,
             aiCorrection: aiCorrection,
             chapters: chapters,
+            glossary: glossary,
             deepseekBaseUrl: deepseekBaseURL,
             deepseekModel: deepseekModel,
             deepseekApiKey: deepseekAPIKey

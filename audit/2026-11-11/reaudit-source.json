@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-11",
+  "head": "90b7a3eba399a5c3058a82d242ad35f497fb4200",
+  "source_sha256": {
+    "app/main.py": "6af99b970a1c4b525b6f9d97358e4c28bb889543b2c53d235fdb8ff0bec3e947",
+    "app/utils.py": "eaf8b34c047fd2ce2810c2b3207c2719a4929dbb3fc8fa2d922db2d54613081f",
+    "app/security.py": "67aed442c46644823a0d0ba30cc55b28e2c95cc25583068dee6fedf35ded9e40",
+    "app/correction.py": "21395ea0d58e4961046d4b9bf827657d2935374eed0428452ac60a98afde2a22",
+    "app/pipeline.py": "8f67afab0c8b3c5dc6a2eaaebd6d3ec26be18788d921d31eb4b74c0af2ee3b7e",
+    "app/transcribe.py": "4c925d338f45bf6f166caab1d4817a353d11458d99e336df71fd5578fb4e0bc0",
+    "app/formatting.py": "c6101372fe8b4725e70f0541b96063ee0768855f882f31e6870fa6f6aa7b5158",
+    "app/exporters.py": "ff8bca972df3ce6572fd8e487a6b9b49a33444a470d359d0af83f14c85979924",
+    "app/static/app.js": "6cf05e489d98b6df0ef3e0d9d15824f5aa86dc6b29ab00aa6f8caf292de4f8a8",
+    "macapp/Sources/Transcriptor/AppModel.swift": "77db9098a82149dfc528a2a1c8e655894bd47124e7ffb423afcd003c87a8aee9",
+    "macapp/Sources/Transcriptor/APIClient.swift": "fcd2ce183565768a7c965e9ba23135c5e0fde3c79040b31d920bebe48773e584",
+    "macapp/Sources/Transcriptor/Models.swift": "17e34d12e13bbce5c83e22c3d827baa38b422115822c272554174d8b6a45a7f2",
+    "macapp/Sources/Transcriptor/BackendManager.swift": "f0aefa2f232ce3f9e0e43d507d8a54bd5e49fc98431a289cfb65e6a7a0faa16c"
+  },
+  "isolated_build_dir": "/private/tmp/transcriptor-reaudit-20261111-5PxVOh",
+  "scope": "A01-A08 remediation review; YouTube and subtitle feature implementation excluded"
+}

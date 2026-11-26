@@ -1,0 +1,335 @@
+{
+  "read_contract": {
+    "duration-normal": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "duration-max": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "duration-above": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "duration-huge": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "duration-inf": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "duration-nan": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "duration-negative": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "paragraph-normal": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "paragraph-max": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "paragraph-above": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "paragraph-huge": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "paragraph-inf": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "paragraph-nan": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "paragraph-negative": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "chapter-normal": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "chapter-max": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "chapter-above": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "chapter-huge": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "chapter-inf": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "chapter-nan": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "chapter-negative": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "segments-normal": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "segments-max": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "segments-above": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "segments-huge": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "segments-inf": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "segments-nan": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "segments-negative": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "raw_segments-normal": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "raw_segments-max": {
+      "loader": "accepted",
+      "expected_valid": true,
+      "detail_status": 200,
+      "corrupt": false,
+      "original_file_unchanged": true
+    },
+    "raw_segments-above": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "raw_segments-huge": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "raw_segments-inf": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "raw_segments-nan": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    },
+    "raw_segments-negative": {
+      "loader": "JobDataError",
+      "expected_valid": false,
+      "detail_status": 422,
+      "corrupt": true,
+      "original_file_unchanged": true
+    }
+  },
+  "chapter_write_contract": {
+    "max": {
+      "request": {
+        "chapters": [
+          {
+            "start": 0,
+            "title": "Opening"
+          },
+          {
+            "start": 2592000,
+            "title": "Outside time range"
+          }
+        ]
+      },
+      "save_status": 200,
+      "detail_status": 200,
+      "list_status": 200,
+      "corrupt": false,
+      "job_and_exports_unchanged": false,
+      "healthy_detail_status": 200,
+      "saved_start": 2592000.0
+    },
+    "above": {
+      "request": {
+        "chapters": [
+          {
+            "start": 0,
+            "title": "Opening"
+          },
+          {
+            "start": 2592001,
+            "title": "Outside time range"
+          }
+        ]
+      },
+      "save_status": 200,
+      "detail_status": 422,
+      "list_status": 200,
+      "corrupt": true,
+      "job_and_exports_unchanged": false,
+      "healthy_detail_status": 200,
+      "saved_start": 2592001.0
+    },
+    "ui-time-string": {
+      "request": {
+        "chapters": [
+          {
+            "start": 0,
+            "title": "Opening"
+          },
+          {
+            "start": "43200:01",
+            "title": "Outside time range"
+          }
+        ]
+      },
+      "save_status": 200,
+      "detail_status": 422,
+      "list_status": 200,
+      "corrupt": true,
+      "job_and_exports_unchanged": false,
+      "healthy_detail_status": 200,
+      "saved_start": 2592001.0
+    },
+    "huge": {
+      "request": {
+        "chapters": [
+          {
+            "start": 0,
+            "title": "Opening"
+          },
+          {
+            "start": 1e+20,
+            "title": "Outside time range"
+          }
+        ]
+      },
+      "save_status": 200,
+      "detail_status": 422,
+      "list_status": 200,
+      "corrupt": true,
+      "job_and_exports_unchanged": false,
+      "healthy_detail_status": 200,
+      "saved_start": 1e+20
+    }
+  }
+}

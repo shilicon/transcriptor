@@ -1,0 +1,14 @@
+[transcriptor] job extract-delete failed:
+Traceback (most recent call last):
+  File "/Users/skmacair/work/transcriptor/app/pipeline.py", line 132, in run_pipeline
+    extract_audio(source, wav_path)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/skmacair/work/transcriptor/app/transcribe.py", line 59, in extract_audio
+    raise TranscriptionError(
+        "无法从文件中提取音轨。" + ("\n" + "\n".join(detail) if detail else "")
+    )
+app.transcribe.TranscriptionError: 无法从文件中提取音轨。
+[in#0 @ 0x79dd024000] Error opening input: No such file or directory
+Error opening input file /var/folders/16/_qj4s9ds3yl4rc48w1slbp540000gn/T/transcriptor-test-1766wnr8/jobs/extract-delete/input.wav.
+Error opening input files: No such file or directory
+

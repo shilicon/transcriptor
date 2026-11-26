@@ -5,6 +5,8 @@ struct SettingsView: View {
     @AppStorage("deepseek.model") private var deepseekModel = "deepseek-flash"
     @AppStorage("aiCorrectionDefault") private var aiCorrectionDefault = true
     @AppStorage("chaptersDefault") private var chaptersDefault = true
+    @AppStorage("glossaryDefault") private var glossaryDefault = false
+    @AppStorage("deepseek.keyRevision") private var keyRevision = 0
 
     @State private var apiKey = ""
     @State private var saved = false
@@ -31,6 +33,7 @@ struct SettingsView: View {
                 HStack {
                     Button(saved ? "已保存" : "保存 API Key") {
                         KeychainStore.save(apiKey, account: KeychainStore.deepSeekAccount)
+                        keyRevision += 1
                         saved = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             saved = false
@@ -42,6 +45,7 @@ struct SettingsView: View {
                     Button("清除") {
                         apiKey = ""
                         KeychainStore.delete(account: KeychainStore.deepSeekAccount)
+                        keyRevision += 1
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
@@ -56,6 +60,10 @@ struct SettingsView: View {
             Section("默认工作流") {
                 Toggle("新建任务默认启用 AI 校正", isOn: $aiCorrectionDefault)
                 Toggle("新建任务默认自动分章", isOn: $chaptersDefault)
+                Toggle("新建任务默认启用领域术语校正", isOn: $glossaryDefault)
+                Text("领域术语校正会把 EDA / 芯片术语按词表规范化，可能误改普通英文；普通访谈建议保持关闭。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Text("AI 校正失败时不会回退到低能力模型，任务会保留原始转写并提示失败。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -75,6 +83,7 @@ struct SettingsView: View {
         }
         .onDisappear {
             KeychainStore.save(apiKey, account: KeychainStore.deepSeekAccount)
+            keyRevision += 1
         }
     }
 }

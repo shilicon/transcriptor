@@ -1,0 +1,45 @@
+usage: transcriptor [-h] (--file PATH | --youtube URL) [--title TITLE]
+                    [--speakers SPEAKERS] [--num-speakers N]
+                    [--language {auto,en,zh}] [--model {large-v3,turbo}]
+                    [--initial-prompt INITIAL_PROMPT] [--ai-correction |
+                    --no-ai-correction] [--chapters | --no-chapters]
+                    [--glossary | --no-glossary]
+                    [--deepseek-base-url DEEPSEEK_BASE_URL]
+                    [--deepseek-model DEEPSEEK_MODEL]
+                    [--deepseek-api-key DEEPSEEK_API_KEY] [--output-dir DIR]
+                    [--output-name NAME] [--json]
+
+创建并运行一次 Transcriptor 转写任务。选项与 macOS App 的“新建转写”对应。
+
+options:
+  -h, --help            show this help message and exit
+  --file, --input PATH  本地音频或视频文件。 (default: None)
+  --youtube, --youtube-url URL
+                        YouTube 视频链接，只下载音频后转写。 (default: None)
+  --title TITLE         任务标题；不填时使用文件名或 YouTube 标题。 (default: )
+  --speakers SPEAKERS   说话人姓名，按首次发言顺序用逗号分隔。 (default: 说话人 1, 说话人 2)
+  --num-speakers N      说话人数，范围 1–4。 (default: 2)
+  --language {auto,en,zh}
+                        转写语言。 (default: auto)
+  --model {large-v3,turbo}
+                        语音模型。 (default: large-v3)
+  --initial-prompt INITIAL_PROMPT
+                        可选的初始提示词，例如人名、产品名或术语。 (default: )
+  --ai-correction       启用 AI 校正。 (default: True)
+  --no-ai-correction    关闭AI 校正。 (default: True)
+  --chapters            启用自动分章。 (default: True)
+  --no-chapters         关闭自动分章。 (default: True)
+  --glossary            启用领域术语校正。 (default: False)
+  --no-glossary         关闭领域术语校正。 (default: False)
+  --deepseek-base-url DEEPSEEK_BASE_URL
+                        DeepSeek API Base URL。 (default:
+                        https://api.deepseek.com)
+  --deepseek-model DEEPSEEK_MODEL
+                        DeepSeek 模型 ID。 (default: deepseek-flash)
+  --deepseek-api-key, --api-key DEEPSEEK_API_KEY
+                        DeepSeek API Key；也可通过 TRANSCRIPTOR_DEEPSEEK_API_KEY
+                        提供。 (default: )
+  --output-dir DIR      完成后把 Markdown、Word、SRT、VTT 复制到指定目录。默认只保存在
+                        data/jobs/<id>/。 (default: None)
+  --output-name NAME    输出文件的共同文件名（不含扩展名），需配合 --output-dir 使用。 (default: None)
+  --json                只输出最终 JSON 摘要，适合脚本调用。 (default: False)

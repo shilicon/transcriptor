@@ -11,6 +11,7 @@
 - 按说话人合并连续发言，长回答自动分段
 - **默认启用 AI 校正**：用 DeepSeek V4.1 Flash 自动修正明显 ASR 错误，不改写、不润色、不补充内容
 - AI 校正可全局或按任务关闭；失败时保留原始转写，不降级到小模型
+- 领域术语校正默认关闭，避免普通英文被误改
 - 自动分章默认开启，也可按任务关闭
 - 可在应用内修改逐字稿文字、说话人、章节标题和时间点
 - 导出 Markdown、Word（`.docx`）和 SRT / VTT 字幕
@@ -38,6 +39,51 @@ open Transcriptor.app
 
 重新构建 App 需要 Xcode / Swift 工具链。App 依赖仓库中的 `.venv` 和 `models/whisper-large-v3`，请从仓库内启动，不要单独移动 `.app`。
 
+## 命令行使用
+
+仓库根目录提供 `./transcriptor` 命令。它直接运行和 macOS App 相同的转写流水线，不需要先启动 Web 服务；任务完成后才返回。先查看全部选项：
+
+```bash
+./transcriptor --help
+```
+
+等价的 Python 调用是 `.venv/bin/python -m app.cli`。
+
+本地音视频文件的完整示例：
+
+```bash
+./transcriptor \
+  --file ./访谈.mp4 \
+  --title "产品访谈" \
+  --speakers "主持人,嘉宾" \
+  --num-speakers 2 \
+  --language zh \
+  --model large-v3 \
+  --initial-prompt "产品名：Transcriptor；人名：李明" \
+  --ai-correction \
+  --chapters \
+  --no-glossary \
+  --output-dir ./exports \
+  --output-name product-interview
+```
+
+YouTube 链接使用同一组选项：
+
+```bash
+./transcriptor \
+  --youtube "https://www.youtube.com/watch?v=..." \
+  --title "线上访谈" \
+  --speakers "主持人,嘉宾" \
+  --num-speakers 2 \
+  --language auto \
+  --no-ai-correction \
+  --chapters
+```
+
+命令行参数与 App 的“新建转写”字段对应：`--file` / `--youtube` 对应输入来源，`--title` 对应标题，`--speakers`、`--num-speakers`、`--language`、`--model` 和 `--initial-prompt` 对应表单字段，`--ai-correction` / `--no-ai-correction`、`--chapters` / `--no-chapters` 与 `--glossary` / `--no-glossary` 对应三个开关。DeepSeek 配置可以用 `--deepseek-base-url`、`--deepseek-model`、`--deepseek-api-key` 指定，也可以使用同名环境变量。
+
+默认导出文件保存在 `data/jobs/<job-id>/`，包括 Markdown、Word、SRT 和 VTT。加上 `--output-dir` 会在完成后把四种文件复制到指定目录；`--output-name` 可以指定它们的共同文件名。需要给其他脚本调用时可以加 `--json`，命令只输出最终任务摘要。没有配置 DeepSeek API Key 时，CLI 仍会继续转写，只是跳过 AI 校正。
+
 ## 语音模型（mlx-whisper）
 
 转写由 [`mlx-whisper`](https://github.com/ml-explore/mlx-examples/tree/main/whisper) 在 Apple Silicon 上本地完成，音频不会离开本机。模型需要是 MLX 格式：
@@ -63,7 +109,7 @@ open Transcriptor.app
 
 1. 在 App 里点击“新建转写”，选择音视频文件，或切换到 **YouTube 链接**。
 2. 填写标题、说话人姓名（按首次发言顺序，用逗号分隔）、说话人数和语言。
-3. 选择是否启用 **AI 校正**（默认开）和 **自动分章**（默认开）。
+3. 选择是否启用 **AI 校正**（默认开）、**自动分章**（默认开）和 **领域术语校正**（默认关，仅专业访谈开启）。
 4. 开始转写。窗口会显示转写、说话人分离、整理、AI 校正、章节、导出等阶段。
 5. 完成后：
    - 查看 AI 校正结果，必要时撤销；
@@ -96,6 +142,8 @@ SRT / VTT 字幕只包含转写文本，不包含说话人姓名，适合直接�
 - 标点、大小写、句子边界
 - 意外重复的词
 
+每次转写都会保留原始识别文本和整理文本：任务中的 `raw_segments` 是不可变的 Whisper 原始分段，段落同时保留 `raw_text`（原始识别）、`formatted_text`（整理结果）和 `text`（当前文本）。撤销 AI 校正只恢复由 AI 自动修改、且之后没有被人工编辑的段落；人工修改会保留。旧任务没有原始分段时，不会把历史整理结果伪称为可恢复的原始识别文本。
+
 不会做：
 
 - 改写、润色、调整语序
@@ -116,7 +164,11 @@ API Key 保存在 macOS 钥匙串。在 App 菜单 → **设置 → AI 校正** 
 
 ## 可选：AI 自动分章
 
-应用本身不依赖任何云端 API。要生成语义化章节标题，可以接本地 OpenAI 兼容接口。
+应用本身不依赖任何云端 API。要生成语义化章节标题，可以接本地 OpenAI 兼容接口，也可以直接使用已配置的 DeepSeek API。
+
+### DeepSeek
+
+先在 App 菜单 → **设置 → AI 校正** 中填写 DeepSeek API Key、Base URL 和模型 ID。然后在“章节”页把分章来源切换为 **DeepSeek**，再点“AI 自动分章”。Base URL 和模型 ID 也可以在章节页直接调整；API Key 只从 macOS 钥匙串读取。
 
 ### LM Studio
 
@@ -160,7 +212,13 @@ Endpoint 填 `http://127.0.0.1:11434/v1`，Model 填 `qwen3`。
 # http://127.0.0.1:8765
 ```
 
-原生 App 不需要打开浏览器。
+首次打开 Web 界面会要求会话凭据，可从 `data/.session-token` 获取：
+
+```bash
+cat data/.session-token
+```
+
+原生 App 不需要打开浏览器，也不需要手动输入该凭据。
 
 ## 数据与目录
 
@@ -177,6 +235,8 @@ data/jobs/<job-id>/
 
 任务、转写结果和导出文件都保存在 `data/jobs`。删除 App 中的任务会同时删除该目录。
 
+`data/.session-token` 是本地接口会话凭据，权限为 `0600`，不要分享或提交到仓库。
+
 环境变量：
 
 - `TRANSCRIPTOR_DATA_DIR`：数据目录，默认 `data`
@@ -188,12 +248,28 @@ data/jobs/<job-id>/
 - `TRANSCRIPTOR_DEEPSEEK_MODEL`：DeepSeek 模型 ID
 - `TRANSCRIPTOR_AI_CORRECTION`：默认是否启用 AI 校正（`1` / `0`）
 - `TRANSCRIPTOR_CHAPTERS`：默认是否自动分章（`1` / `0`）
+- `TRANSCRIPTOR_GLOSSARY`：默认是否启用领域术语校正（`1` / `0`，默认关闭）
 - `TRANSCRIPTOR_YTDLP_PROXY`：下载 YouTube 音频时使用的代理
 - `TRANSCRIPTOR_YTDLP_COOKIES`：yt-dlp cookies 文件路径，用于需要登录的视频
+
+## 本地接口安全
+
+后端只监听 `127.0.0.1`，并额外使用本机会话凭据保护任务接口：
+
+- 后端启动时生成随机会话 token，写入 `data/.session-token`（权限 `0600`）
+- 原生 App 通过 `X-Transcriptor-Token` 请求头携带 token
+- 开发用 Web 界面需要先输入 `data/.session-token` 中的凭据，通过 `POST /api/session` 换取同源、`HttpOnly`、`SameSite=Strict` cookie；匿名访问首页不会自动获得凭据
+- 所有请求校验 Host，浏览器请求额外校验 Origin；CORS 不是唯一防线
+- token 和 DeepSeek API Key 不会写入任务 JSON、导出文件或 URL
+
+这能阻止未认证的本地接口调用和跨站提交，但不能防御同一 macOS 用户下能读取 token 文件的恶意进程。
 
 ## 实现结构
 
 - `app/main.py`：FastAPI 路由、上传、YouTube 链接、任务 API
+- `app/cli.py`：命令行转写入口，复用同一流水线
+- `app/job_setup.py`：App / CLI 共用的任务构建与参数校验
+- `app/security.py`：本机会话 token、Host / Origin 校验
 - `app/pipeline.py`：转写 → 说话人分离 → 段落整理 → 章节 → 导出
 - `app/download.py`：yt-dlp 下载 YouTube 音频（不下载平台字幕）
 - `app/transcribe.py`：ffmpeg 提取音轨、`mlx-whisper` 转写
@@ -203,6 +279,7 @@ data/jobs/<job-id>/
 - `app/correction.py`：DeepSeek 自动校正、局部修改校验、原稿保留
 - `app/chapters.py`：基础分章与 LLM 分章
 - `app/exporters.py`：Markdown / DOCX / 字幕导出
+- `transcriptor`：命令行包装脚本
 - `app/static/`、`app/templates/`：开发用浏览器界面
 - `macapp/Sources/Transcriptor/`：原生 SwiftUI App
 - `macapp/build_app.sh`：构建 `Transcriptor.app`
@@ -211,11 +288,17 @@ data/jobs/<job-id>/
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
+./tests/run_native_probes.sh
+node tests/web_state_probe.js
 ```
+
+原生探针会用测试替身验证任务切换竞态和大文件上传请求体不驻留内存；Web 探针用实际 `app.js` 的处理函数验证保存乱序和分章重叠，不需要网络、模型或密钥。
 
 ## 说明
 
 - 当前为单机单任务队列，同一时间处理一个任务，避免多个模型同时占用内存。
+- 本地文件上传使用磁盘临时 multipart 文件和流式请求体，客户端不会把整个文件读入内存；服务端同样分块写入任务目录。
 - 转写质量和说话人分离效果取决于录音质量；建议在安静环境、双人分轨或近场麦克风下录制。
 - 自动分章和专有名词校正属于辅助功能，正式发布前建议人工复核。
 - 默认上传上限 4 GB。
+- 音频时长、段落和章节时间上限为 30 天；超出范围的任务会被标记为损坏，原生界面不会因时间格式转换崩溃。

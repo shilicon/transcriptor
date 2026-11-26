@@ -1,0 +1,13 @@
+{
+  "after_old_response" : "selected=B, displayed=A",
+  "before_old_response" : "selected=B, displayed=B",
+  "mock_requests" : [
+    "GET \/api\/jobs\/A",
+    "POST \/api\/jobs\/A\/chapters\/auto",
+    "GET \/api\/jobs\/B",
+    "GET \/api\/jobs",
+    "DELETE \/api\/jobs\/A",
+    "GET \/api\/jobs"
+  ],
+  "probe" : "native_job_switch_race"
+}

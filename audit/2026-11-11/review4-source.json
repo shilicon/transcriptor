@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-12",
+  "head": "90b7a3eba399a5c3058a82d242ad35f497fb4200",
+  "scope": "Independent REVIEW-3 R02/R05 remediation verification; YouTube/subtitles feature excluded.",
+  "scratch_dir": "/private/tmp/transcriptor-review4-20261112-4kfi85nj",
+  "source_sha256": {
+    "app/utils.py": "1e2aafbfaa654f1ab4ae2f5173185231223bef9e79edabaa6f87a241b4f258fd",
+    "app/main.py": "8dca5f45d9b5c4180c361ca6ddb0bf85bf3857c4a8a265b43a860dec6805e210",
+    "app/static/app.js": "59a6d8bc08f1fdcafa434a1a0bbf3aa2b6353c5bb266a229d1b4ef3d5849b8b7",
+    "macapp/Sources/Transcriptor/AppModel.swift": "f98d01785f5dbc0714561386f2e9c405563ccb1b436134c17b10561eb4e3d4b0",
+    "macapp/Sources/Transcriptor/APIClient.swift": "fcd2ce183565768a7c965e9ba23135c5e0fde3c79040b31d920bebe48773e584",
+    "macapp/Sources/Transcriptor/Models.swift": "a09843733416ecc14d62ff93736b81b27891581696616e5a7b275aa6ffb4e8a2",
+    "macapp/Sources/Transcriptor/BackendManager.swift": "f0aefa2f232ce3f9e0e43d507d8a54bd5e49fc98431a289cfb65e6a7a0faa16c",
+    "tests/test_jobs.py": "de71743f9e076a2c4590943af7eaf6f1ff1a93b87cd5a92b8f994a4045a6c91d",
+    "tests/native/AppModelRaceProbe.swift": "9ec8e47e9ee5053300a052a57ea18c4a144f100919d414906a4f3ba6a9d7752a",
+    "tests/web_state_probe.js": "8f95e1ee5f0bf00cb2966c97cf560c541611ed172a71d41a4b17c06c5c023de1",
+    "app/config.py": "5599a5da10b058a14bc036744bbbc21109b0e2844be85bc41ad0cefb227a0afb",
+    "tests/run_native_probes.sh": "c68c918c97dc550b45b642d45f30441b4b9f214022b0bf6169f6033a35651a54",
+    "tests/generate_format_fixtures.py": "deba6abd85f4deb03cd184303c8ff62ff9c02c10ea833dce35a67a690098b270",
+    "tests/native/ChapterRefreshOrderProbe.swift": "71f660884887eba1e7b3b8238ccf769012828f1bb824e5a4deb9bc9c2f0e3e61",
+    "tests/native/FormatSafetyProbe.swift": "1ba0d8941455df44055a93f5ef125f33b972d214904f19378304481b361ca5d4"
+  }
+}

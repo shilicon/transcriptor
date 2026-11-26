@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +64,7 @@ def _correction_line(job: dict[str, Any]) -> tuple[str, str] | None:
     if status == "failed":
         return ("AI 校正：", "失败，已保留原始转写。" + (f"原因：{correction.get('error')}" if correction.get("error") else ""))
     if status == "undone":
-        return ("AI 校正：", "已撤销，当前为原始转写。")
+        return ("AI 校正：", "已恢复 AI 修改前的整理文本；人工编辑保留。")
     if status == "disabled":
         return ("AI 校正：", "未启用。")
     return None
@@ -239,6 +241,28 @@ def render_docx(job: dict[str, Any], output_path: Path) -> None:
     doc.save(str(output_path))
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp_name, path)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+
+def _atomic_write_docx(job: dict[str, Any], path: Path) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=path.parent)
+    os.close(fd)
+    try:
+        render_docx(job, Path(tmp_name))
+        os.replace(tmp_name, path)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+
 def write_exports(job: dict[str, Any], folder: Path) -> dict[str, str]:
     folder.mkdir(parents=True, exist_ok=True)
     md_path = folder / "transcript.md"
@@ -246,10 +270,10 @@ def write_exports(job: dict[str, Any], folder: Path) -> dict[str, str]:
     srt_path = folder / "transcript.srt"
     vtt_path = folder / "transcript.vtt"
 
-    md_path.write_text(render_markdown(job), encoding="utf-8")
-    render_docx(job, docx_path)
-    srt_path.write_text(render_srt(job), encoding="utf-8")
-    vtt_path.write_text(render_vtt(job), encoding="utf-8")
+    _atomic_write_text(md_path, render_markdown(job))
+    _atomic_write_docx(job, docx_path)
+    _atomic_write_text(srt_path, render_srt(job))
+    _atomic_write_text(vtt_path, render_vtt(job))
 
     return {
         "md": md_path.name,

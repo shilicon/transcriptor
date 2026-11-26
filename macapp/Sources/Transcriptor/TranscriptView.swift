@@ -5,6 +5,7 @@ struct TranscriptView: View {
     let editing: Bool
     @Binding var draftParagraphs: [Paragraph]
     @Binding var draftSpeakerIds: [String]
+    @EnvironmentObject private var model: AppModel
 
     private struct Block: Identifiable {
         let id: Int
@@ -69,7 +70,13 @@ struct TranscriptView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center, spacing: 8) {
                 if editing && index < draftSpeakerIds.count {
-                    Picker("", selection: $draftSpeakerIds[index]) {
+                    Picker("", selection: Binding(
+                        get: { draftSpeakerIds[index] },
+                        set: {
+                            draftSpeakerIds[index] = $0
+                            model.markDraftChanged()
+                        }
+                    )) {
                         ForEach(job.speakers) { item in
                             Text(item.name).tag(item.id)
                         }
@@ -96,7 +103,10 @@ struct TranscriptView: View {
                     "",
                     text: Binding(
                         get: { draftParagraphs[index].text },
-                        set: { draftParagraphs[index].text = $0 }
+                        set: {
+                            draftParagraphs[index].text = $0
+                            model.markDraftChanged()
+                        }
                     ),
                     axis: .vertical
                 )

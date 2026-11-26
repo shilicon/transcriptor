@@ -1,0 +1,21 @@
+warning: /Users/skmacair/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/skmacair/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+Building for debugging...
+[Planning deferred tasks]
+[19 / 24]
+[20 / 25] Transcriptor-product
+[31 / 105]
+[41 / 105]
+[44 / 105]
+[50 / 105]
+[53 / 105]
+[61 / 105]
+[66 / 105]
+[67 / 105]
+[79 / 105]
+[83 / 105]
+[85 / 105]
+[100 / 105] Transcriptor-product
+[101 / 105] Transcriptor-product
+[103 / 105] Transcriptor-product
+Build complete! (6.02秒)

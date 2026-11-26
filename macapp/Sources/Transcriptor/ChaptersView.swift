@@ -9,11 +9,24 @@ private struct ChapterDraft: Identifiable {
 struct ChaptersView: View {
     let job: Job
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openSettings) private var openSettings
 
     @State private var drafts: [ChapterDraft] = []
+    @State private var draftsJobID: String?
     @AppStorage("llm.endpoint") private var endpoint = ""
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage("chapter.language") private var titleLanguage = "zh"
+    @AppStorage("chapter.provider") private var provider = "local"
+    @AppStorage("chapter.providerChosen") private var providerChosen = false
+    @AppStorage("deepseek.baseURL") private var deepseekBaseURL = "https://api.deepseek.com"
+    @AppStorage("deepseek.model") private var deepseekModel = "deepseek-flash"
+    @AppStorage("deepseek.keyRevision") private var keyRevision = 0
+    @State private var deepseekKey = ""
+
+    private var isDeepSeek: Bool { provider == "deepseek" }
+    private var deepSeekConfigured: Bool {
+        !deepseekKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -56,9 +69,24 @@ struct ChaptersView: View {
         }
         .onAppear {
             syncFromJob()
+            deepseekKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+            if !providerChosen {
+                provider = deepseekKey.isEmpty ? "local" : "deepseek"
+                providerChosen = true
+            }
             if endpoint.isEmpty {
                 endpoint = model.config?.llmBaseUrl ?? "http://127.0.0.1:1234/v1"
             }
+        }
+        .onChange(of: provider) { _, _ in
+            providerChosen = true
+            deepseekKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+        }
+        .onChange(of: keyRevision) { _, _ in
+            deepseekKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+        }
+        .onChange(of: job.id) { _, _ in
+            syncFromJob()
         }
         .onChange(of: job.chapters) { _, _ in
             syncFromJob()
@@ -71,19 +99,51 @@ struct ChaptersView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("自动分章")
                         .font(.headline)
-                    Text("连接本地 LM Studio / Ollama 的 OpenAI 兼容接口，按内容生成章节标题。也可以先使用基础分章。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        isDeepSeek
+                            ? "使用已配置的 DeepSeek API 生成章节标题。也可以先使用基础分章。"
+                            : "连接本地 LM Studio / Ollama 的 OpenAI 兼容接口，按内容生成章节标题。也可以先使用基础分章。"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Picker("", selection: $provider) {
+                    Text("本地 LLM").tag("local")
+                    Text("DeepSeek").tag("deepseek")
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+            }
+
+            if isDeepSeek {
+                HStack(spacing: 8) {
+                    TextField("Base URL", text: $deepseekBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("模型 ID", text: $deepseekModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 190)
+                    if deepSeekConfigured {
+                        Label("已配置 Key", systemImage: "checkmark.seal")
+                            .font(.caption2)
+                            .foregroundStyle(transcriptorAccent)
+                    } else {
+                        Button("配置 API Key") { openSettings() }
+                            .font(.caption)
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    TextField("Endpoint，例如 http://127.0.0.1:1234/v1", text: $endpoint)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("模型，留空优先非推理模型", text: $llmModel)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 190)
+                }
             }
 
             HStack(spacing: 8) {
-                TextField("Endpoint，例如 http://127.0.0.1:1234/v1", text: $endpoint)
-                    .textFieldStyle(.roundedBorder)
-                TextField("模型，留空优先非推理模型", text: $llmModel)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 190)
                 Picker("", selection: $titleLanguage) {
                     Text("中文标题").tag("zh")
                     Text("English").tag("en")
@@ -91,15 +151,22 @@ struct ChaptersView: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(width: 100)
-            }
 
-            HStack(spacing: 8) {
                 Button {
+                    let apiKey = isDeepSeek
+                        ? KeychainStore.load(account: KeychainStore.deepSeekAccount)
+                        : ""
+                    if isDeepSeek
+                        && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        model.errorMessage = "还没有配置 DeepSeek API Key。请先在设置中填写。"
+                        return
+                    }
                     Task {
                         await model.autoChapters(
-                            endpoint: endpoint,
-                            model: llmModel,
-                            titleLanguage: titleLanguage
+                            endpoint: isDeepSeek ? deepseekBaseURL : endpoint,
+                            model: isDeepSeek ? deepseekModel : llmModel,
+                            titleLanguage: titleLanguage,
+                            apiKey: apiKey
                         )
                         syncFromJob()
                     }
@@ -123,7 +190,7 @@ struct ChaptersView: View {
                 .disabled(model.isGeneratingChapters)
 
                 Spacer()
-                Text("建议使用 Gemma 等非推理模型")
+                Text(isDeepSeek ? "使用设置中的 DeepSeek Key" : "建议使用 Gemma 等非推理模型")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -140,7 +207,12 @@ struct ChaptersView: View {
     }
 
     private func syncFromJob() {
-        let chapters = model.job?.chapters ?? job.chapters
+        // Never mix another job's chapters into this editor.  `model.job` can
+        // briefly point at a different selection while a switch is in flight.
+        let chapters = model.job?.id == job.id
+            ? model.job?.chapters ?? []
+            : job.chapters
+        draftsJobID = job.id
         drafts = chapters
             .sorted { $0.start < $1.start }
             .map { ChapterDraft(start: Format.timestamp($0.start), title: $0.title) }
@@ -157,6 +229,10 @@ struct ChaptersView: View {
     }
 
     private func save() {
+        guard draftsJobID == job.id else {
+            syncFromJob()
+            return
+        }
         let chapters = drafts.compactMap { draft -> Chapter? in
             let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return nil }

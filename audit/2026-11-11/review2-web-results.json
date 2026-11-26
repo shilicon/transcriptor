@@ -1,0 +1,7 @@
+{
+  "speaker_response_after_text_save": {
+    "before_old_response": "newer saved text",
+    "after_old_response": "original text",
+    "rendered_text": "original text"
+  }
+}

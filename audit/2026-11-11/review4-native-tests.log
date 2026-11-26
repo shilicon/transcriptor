@@ -1,0 +1,6 @@
+native probes: PASS
+upload body bytes in URLProtocol: nil
+upload header key present: true
+chapter refresh order probe: PASS
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+format probes: PASS

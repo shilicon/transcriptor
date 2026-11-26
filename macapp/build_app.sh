@@ -12,6 +12,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Transcriptor "$APP/Contents/MacOS/Transcriptor"
 cp Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/"
+cp -R Resources/en.lproj "$APP/Contents/Resources/"
 chmod +x "$APP/Contents/MacOS/Transcriptor"
 
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true

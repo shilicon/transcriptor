@@ -17,10 +17,21 @@ final class BackendManager: ObservableObject {
     private var ownsProcess = false
     private var logHandle: FileHandle?
     private(set) var repoRoot: URL?
+    private(set) var sessionToken: String?
 
     func ensureRunning() async {
         if state == .ready { return }
         if await api.health() {
+            guard let root = findRepoRoot() else {
+                state = .failed("找不到 Transcriptor 项目目录（需要 app/main.py 和 .venv）。")
+                return
+            }
+            repoRoot = root
+            guard let token = readSessionToken(root: root) else {
+                state = .failed("检测到未受保护的旧版本后端。请关闭现有 Transcriptor 后端后重试。")
+                return
+            }
+            sessionToken = token
             state = .ready
             return
         }
@@ -47,8 +58,11 @@ final class BackendManager: ObservableObject {
 
         for _ in 0..<60 {
             if await api.health() {
-                state = .ready
-                return
+                if let token = readSessionToken(root: root) {
+                    sessionToken = token
+                    state = .ready
+                    return
+                }
             }
             try? await Task.sleep(nanoseconds: 400_000_000)
         }
@@ -62,8 +76,18 @@ final class BackendManager: ObservableObject {
         process.terminate()
         self.process = nil
         ownsProcess = false
+        sessionToken = nil
         try? logHandle?.close()
         logHandle = nil
+    }
+
+    private func readSessionToken(root: URL) -> String? {
+        let url = root.appendingPathComponent("data/.session-token")
+        guard let value = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 
     private func launchBackend(root: URL, python: URL) throws {

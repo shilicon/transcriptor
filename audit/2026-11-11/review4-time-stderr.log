@@ -1,0 +1,25 @@
+[transcriptor] skipping corrupt job paragraph-negative: 任务 paragraph-negative 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job segments-nan: 任务 segments-nan 的数据文件损坏：segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job chapter-above: 任务 chapter-above 的数据文件损坏：章节 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job paragraph-inf: 任务 paragraph-inf 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job paragraph-huge: 任务 paragraph-huge 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job raw_segments-inf: 任务 raw_segments-inf 的数据文件损坏：raw_segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job duration-nan: 任务 duration-nan 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job segments-negative: 任务 segments-negative 的数据文件损坏：segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job duration-above: 任务 duration-above 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job raw_segments-huge: 任务 raw_segments-huge 的数据文件损坏：raw_segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job chapter-inf: 任务 chapter-inf 的数据文件损坏：章节 start 不是数字或时间字符串
+[transcriptor] skipping corrupt job raw_segments-above: 任务 raw_segments-above 的数据文件损坏：raw_segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job segments-huge: 任务 segments-huge 的数据文件损坏：segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job chapter-huge: 任务 chapter-huge 的数据文件损坏：章节 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job chapter-nan: 任务 chapter-nan 的数据文件损坏：章节 start 不是数字或时间字符串
+[transcriptor] skipping corrupt job duration-negative: 任务 duration-negative 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job paragraph-above: 任务 paragraph-above 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job raw_segments-negative: 任务 raw_segments-negative 的数据文件损坏：raw_segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job chapter-negative: 任务 chapter-negative 的数据文件损坏：章节 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job paragraph-nan: 任务 paragraph-nan 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job segments-inf: 任务 segments-inf 的数据文件损坏：segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job duration-inf: 任务 duration-inf 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job segments-above: 任务 segments-above 的数据文件损坏：segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job raw_segments-nan: 任务 raw_segments-nan 的数据文件损坏：raw_segments 中的时间戳超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job duration-huge: 任务 duration-huge 的数据文件损坏：audio.duration 超出 0–2592000 秒范围

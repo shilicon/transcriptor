@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-11",
+  "head": "90b7a3eba399a5c3058a82d242ad35f497fb4200",
+  "scope": "Second independent remediation review. YouTube/subtitle feature implementation excluded.",
+  "source_sha256": {
+    "app/main.py": "8dca5f45d9b5c4180c361ca6ddb0bf85bf3857c4a8a265b43a860dec6805e210",
+    "app/utils.py": "52c66d71da2064d445f26d1cfa9f545bc225fb84c5a10dfe3206353773e08ec8",
+    "app/security.py": "67aed442c46644823a0d0ba30cc55b28e2c95cc25583068dee6fedf35ded9e40",
+    "app/correction.py": "716b01ff8d2b6dba7e0982b8f07d6ba6641e982381779aaf0095202cba3533a7",
+    "app/pipeline.py": "2c02a34219f04f5a177c15d17e23b10dde4af339f5a90088bf7d251459d7e857",
+    "app/transcribe.py": "e00e46457a8e71291af9b22ac2eebe498687c0090aa185722daab0f446522455",
+    "app/static/app.js": "6cd531c0bf54915a675ee42f31d895de0c4ed9b277a92ae2b01bb1e49a20ca45",
+    "macapp/Sources/Transcriptor/AppModel.swift": "785c8dfc037b7c31bc6dd4f0310a537900e9095da7cadc93738c025d095d8963",
+    "macapp/Sources/Transcriptor/APIClient.swift": "fcd2ce183565768a7c965e9ba23135c5e0fde3c79040b31d920bebe48773e584",
+    "macapp/Sources/Transcriptor/Models.swift": "17e34d12e13bbce5c83e22c3d827baa38b422115822c272554174d8b6a45a7f2",
+    "macapp/Sources/Transcriptor/BackendManager.swift": "f0aefa2f232ce3f9e0e43d507d8a54bd5e49fc98431a289cfb65e6a7a0faa16c"
+  },
+  "isolated_build_dir": "/private/tmp/transcriptor-review2-20261111-pvjmom"
+}

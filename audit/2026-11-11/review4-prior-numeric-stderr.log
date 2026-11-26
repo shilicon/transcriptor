@@ -1,0 +1,3 @@
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：audio.duration 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：段落 start 超出 0–2592000 秒范围
+[transcriptor] skipping corrupt job damaged: 任务 damaged 的数据文件损坏：章节 start 超出 0–2592000 秒范围

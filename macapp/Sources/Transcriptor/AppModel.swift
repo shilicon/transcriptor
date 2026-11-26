@@ -14,16 +14,36 @@ final class AppModel: ObservableObject {
     @Published var config: AppConfig?
     @Published var errorMessage: String?
     @Published var isBusy = false
-    @Published var isGeneratingChapters = false
+    @Published private(set) var generatingChaptersJobs: Set<String> = []
 
     @Published var editingTranscript = false
-    @Published var draftParagraphs: [Paragraph] = []
-    @Published var draftSpeakerIds: [String] = []
+    @Published var draftParagraphs: [Paragraph] = [] {
+        didSet { draftVersion += 1 }
+    }
+    @Published var draftSpeakerIds: [String] = [] {
+        didSet { draftVersion += 1 }
+    }
+
+    var isGeneratingChapters: Bool {
+        guard let id = selectedJobId else { return false }
+        return generatingChaptersJobs.contains(id)
+    }
+
+    var generatingChaptersJobId: String? {
+        isGeneratingChapters ? selectedJobId : nil
+    }
 
     let backend = BackendManager()
-    private let api = APIClient()
+    private var api = APIClient()
     private var pollTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private var jobsRequestID = 0
+    private var jobFetchGeneration = 0
+    private var jobUpdateGeneration = 0
+    private var mutationGeneration = 0
+    private var transcriptSaveGeneration = 0
+    private var chapterOperations: [String: UUID] = [:]
+    private var draftVersion = 0
 
     init() {
         backend.$state
@@ -35,6 +55,7 @@ final class AppModel: ObservableObject {
     func bootstrap() async {
         await backend.ensureRunning()
         guard backend.state == .ready else { return }
+        api.token = backend.sessionToken
         await loadConfig()
         await loadJobs()
     }
@@ -44,17 +65,27 @@ final class AppModel: ObservableObject {
     }
 
     func loadJobs() async {
+        jobsRequestID += 1
+        let requestID = jobsRequestID
         do {
-            jobs = try await api.listJobs()
+            let loaded = try await api.listJobs()
+            guard requestID == jobsRequestID else { return }
+            jobs = loaded
             if let selected = selectedJobId,
                !jobs.contains(where: { $0.id == selected }) {
                 selectedJobId = nil
                 job = nil
+                editingTranscript = false
+                draftParagraphs = []
+                draftSpeakerIds = []
+                mutationGeneration += 1
+                transcriptSaveGeneration += 1
             }
-            if selectedJobId == nil, let first = jobs.first {
+            if selectedJobId == nil, let first = jobs.first(where: { $0.corrupt != true }) {
                 selectJob(first.id)
             }
         } catch {
+            guard requestID == jobsRequestID else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -63,25 +94,98 @@ final class AppModel: ObservableObject {
         selectedJobId = id
         pollTask?.cancel()
         pollTask = nil
+        jobFetchGeneration += 1
+        jobUpdateGeneration += 1
+        mutationGeneration += 1
+        transcriptSaveGeneration += 1
+        draftVersion += 1
+        editingTranscript = false
+        draftParagraphs = []
+        draftSpeakerIds = []
         guard let id else {
             job = nil
-            editingTranscript = false
             return
         }
-        editingTranscript = false
+        // Do not leave the previous job's detail visible while the new
+        // selection is loading: operations based on `job.id` would target A
+        // even though the sidebar already points at B.
+        job = nil
         Task { await loadJob(id) }
     }
 
+    private func beginMutation() -> Int {
+        mutationGeneration += 1
+        return mutationGeneration
+    }
+
+    private func canApply(_ generation: Int, for jobID: String) -> Bool {
+        selectedJobId == jobID && generation == mutationGeneration
+    }
+
+    private func refreshIfSuperseded(
+        _ mutation: Int,
+        update: Int,
+        jobID: String
+    ) async {
+        guard selectedJobId == jobID,
+              mutation != mutationGeneration || update != jobUpdateGeneration else {
+            return
+        }
+        await loadJob(jobID)
+        await loadJobs()
+    }
+
+    private func beginChapterOperation(_ jobID: String) -> UUID {
+        let token = UUID()
+        chapterOperations[jobID] = token
+        generatingChaptersJobs.insert(jobID)
+        return token
+    }
+
+    private func endChapterOperation(_ jobID: String, token: UUID) {
+        guard chapterOperations[jobID] == token else { return }
+        chapterOperations.removeValue(forKey: jobID)
+        generatingChaptersJobs.remove(jobID)
+    }
+
+    func markDraftChanged() {
+        draftVersion += 1
+    }
+
+    private func adopt(_ updated: Job, for jobID: String) {
+        guard selectedJobId == jobID else { return }
+        jobUpdateGeneration += 1
+        job = updated
+    }
+
     func loadJob(_ id: String) async {
+        jobFetchGeneration += 1
+        let fetchGeneration = jobFetchGeneration
+        let updateGeneration = jobUpdateGeneration
+        let mutation = mutationGeneration
         do {
             let loaded = try await api.getJob(id)
-            guard selectedJobId == id else { return }
-            job = loaded
+            guard selectedJobId == id,
+                  fetchGeneration == jobFetchGeneration,
+                  updateGeneration == jobUpdateGeneration,
+                  mutation == mutationGeneration else { return }
+            adopt(loaded, for: id)
             if loaded.statusValue == .queued || loaded.statusValue == .running {
                 startPolling(id)
             }
         } catch {
+            guard selectedJobId == id,
+                  fetchGeneration == jobFetchGeneration,
+                  mutation == mutationGeneration else { return }
             errorMessage = error.localizedDescription
+            if let apiError = error as? APIError,
+               apiError.message.contains("损坏") || apiError.message.contains("不存在") {
+                selectedJobId = nil
+                job = nil
+                editingTranscript = false
+                draftParagraphs = []
+                draftSpeakerIds = []
+            }
         }
     }
 
@@ -91,10 +195,12 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 guard let self, !Task.isCancelled else { return }
+                let updateGeneration = self.jobUpdateGeneration
                 do {
                     let updated = try await self.api.getJob(id)
-                    guard self.selectedJobId == id else { return }
-                    self.job = updated
+                    guard self.selectedJobId == id,
+                          updateGeneration == self.jobUpdateGeneration else { return }
+                    self.adopt(updated, for: id)
                     if updated.statusValue != .queued && updated.statusValue != .running {
                         await self.loadJobs()
                         return
@@ -117,6 +223,7 @@ final class AppModel: ObservableObject {
         initialPrompt: String,
         aiCorrection: Bool,
         chapters: Bool,
+        glossary: Bool,
         deepseekBaseURL: String,
         deepseekModel: String,
         deepseekAPIKey: String
@@ -133,6 +240,7 @@ final class AppModel: ObservableObject {
             initialPrompt: initialPrompt,
             aiCorrection: aiCorrection,
             chapters: chapters,
+            glossary: glossary,
             deepseekBaseURL: deepseekBaseURL,
             deepseekModel: deepseekModel,
             deepseekAPIKey: deepseekAPIKey
@@ -151,6 +259,7 @@ final class AppModel: ObservableObject {
         initialPrompt: String,
         aiCorrection: Bool,
         chapters: Bool,
+        glossary: Bool,
         deepseekBaseURL: String,
         deepseekModel: String,
         deepseekAPIKey: String
@@ -167,6 +276,7 @@ final class AppModel: ObservableObject {
             initialPrompt: initialPrompt,
             aiCorrection: aiCorrection,
             chapters: chapters,
+            glossary: glossary,
             deepseekBaseURL: deepseekBaseURL,
             deepseekModel: deepseekModel,
             deepseekAPIKey: deepseekAPIKey
@@ -181,104 +291,208 @@ final class AppModel: ObservableObject {
     }
 
     func saveSpeakers(_ names: [String: String]) async {
-        guard let id = job?.id else { return }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
         do {
-            job = try await api.updateSpeakers(id, names: names)
+            let updated = try await api.updateSpeakers(id, names: names)
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func beginEditing() {
-        guard let job else { return }
+        guard let job, selectedJobId == job.id else { return }
         draftParagraphs = job.paragraphs
         draftSpeakerIds = job.paragraphs.map(\.speakerId)
         editingTranscript = true
+        markDraftChanged()
     }
 
     func cancelEditing() {
         editingTranscript = false
         draftParagraphs = []
         draftSpeakerIds = []
+        markDraftChanged()
     }
 
     func saveTranscript() async {
-        guard let id = job?.id else { return }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
+        transcriptSaveGeneration += 1
+        let saveGeneration = transcriptSaveGeneration
+        let draftVersionAtStart = draftVersion
+        let texts = draftParagraphs.map(\.text)
+        let speakerIds = draftSpeakerIds
         do {
-            let texts = draftParagraphs.map(\.text)
-            job = try await api.updateParagraphs(id, texts: texts, speakerIds: draftSpeakerIds)
-            editingTranscript = false
+            let updated = try await api.updateParagraphs(id, texts: texts, speakerIds: speakerIds)
+            guard selectedJobId == id,
+                  mutation == mutationGeneration,
+                  updateGeneration == jobUpdateGeneration,
+                  saveGeneration == transcriptSaveGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
+            if draftVersion == draftVersionAtStart {
+                editingTranscript = false
+                draftParagraphs = []
+                draftSpeakerIds = []
+            }
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func saveChapters(_ chapters: [Chapter]) async {
-        guard let id = job?.id else { return }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
         do {
-            job = try await api.updateChapters(id, chapters: chapters)
+            let updated = try await api.updateChapters(id, chapters: chapters)
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func basicChapters() async {
-        guard let id = job?.id else { return }
-        isGeneratingChapters = true
-        defer { isGeneratingChapters = false }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
+        let chapterOperation = beginChapterOperation(id)
+        defer { endChapterOperation(id, token: chapterOperation) }
         do {
-            job = try await api.basicChapters(id)
+            let updated = try await api.basicChapters(id)
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
-    func autoChapters(endpoint: String, model: String, titleLanguage: String) async {
-        guard let id = job?.id else { return }
-        isGeneratingChapters = true
-        defer { isGeneratingChapters = false }
+    func autoChapters(
+        endpoint: String,
+        model: String,
+        titleLanguage: String,
+        apiKey: String = ""
+    ) async {
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
+        let chapterOperation = beginChapterOperation(id)
+        defer { endChapterOperation(id, token: chapterOperation) }
         do {
-            job = try await api.autoChapters(
+            let updated = try await api.autoChapters(
                 id,
                 endpoint: endpoint,
                 model: model,
-                titleLanguage: titleLanguage
+                titleLanguage: titleLanguage,
+                apiKey: apiKey
             )
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func deleteCurrentJob() async {
-        guard let id = job?.id else { return }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
         do {
             try await api.deleteJob(id)
+            guard selectedJobId == id, mutation == mutationGeneration else {
+                await loadJobs()
+                return
+            }
             selectedJobId = nil
             job = nil
             editingTranscript = false
+            draftParagraphs = []
+            draftSpeakerIds = []
+            jobUpdateGeneration += 1
+            jobFetchGeneration += 1
+            mutationGeneration += 1
+            chapterOperations.removeValue(forKey: id)
+            generatingChaptersJobs.remove(id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func undoCorrection() async {
-        guard let id = job?.id else { return }
+        guard let id = job?.id, selectedJobId == id else { return }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
         do {
-            job = try await api.undoCorrection(id)
+            let updated = try await api.undoCorrection(id)
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
             await loadJobs()
         } catch {
-            errorMessage = error.localizedDescription
+            if selectedJobId == id { errorMessage = error.localizedDescription }
         }
     }
 
     func exportData(_ ext: String) async throws -> Data {
-        guard let id = job?.id else { throw APIError(message: "没有选中的任务。") }
+        guard let id = job?.id, selectedJobId == id else {
+            throw APIError(message: "没有选中的任务。")
+        }
         return try await api.export(id, extension: ext)
     }
 
@@ -287,6 +501,9 @@ final class AppModel: ObservableObject {
         panel.nameFieldStringValue = "\(suggestedName).\(ext)"
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
+        // Keep AppKit's standard panel size.  Forcing a narrower content
+        // size clips the Save button and makes the dialog look broken.
+        panel.styleMask.insert(.resizable)
         if ext == "md" {
             panel.allowedContentTypes = [.plainText]
         } else if ext == "docx" {
