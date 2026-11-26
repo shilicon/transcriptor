@@ -352,7 +352,7 @@ class CorruptJobTests(unittest.TestCase):
 
 
 class ChapterConcurrencyTests(unittest.TestCase):
-    def test_auto_chapters_forwards_deepseek_key(self):
+    def test_auto_chapters_forwards_deepseek_key_and_instructions(self):
         with isolated_jobs_dir():
             job_id = "chapter-key"
             save_job(make_job(job_id, "done"))
@@ -362,6 +362,7 @@ class ChapterConcurrencyTests(unittest.TestCase):
                 calls["endpoint"] = args[2]
                 calls["model"] = args[3]
                 calls["api_key"] = kwargs.get("api_key")
+                calls["instructions"] = kwargs.get("instructions")
                 return [{"start": 0, "title": "章节"}]
 
             async def scenario():
@@ -372,6 +373,7 @@ class ChapterConcurrencyTests(unittest.TestCase):
                             endpoint="https://api.deepseek.com",
                             model="deepseek-flash",
                             api_key="sk-synthetic",
+                            instructions="每 3 分钟一章",
                         ),
                     )
 
@@ -379,6 +381,7 @@ class ChapterConcurrencyTests(unittest.TestCase):
             self.assertEqual(calls["endpoint"], "https://api.deepseek.com")
             self.assertEqual(calls["model"], "deepseek-flash")
             self.assertEqual(calls["api_key"], "sk-synthetic")
+            self.assertEqual(calls["instructions"], "每 3 分钟一章")
             self.assertEqual(result["chapters"], [{"start": 0.0, "title": "章节"}])
 
     def test_chapter_response_preserves_text_and_speaker_edits(self):

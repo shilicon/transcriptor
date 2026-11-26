@@ -42,6 +42,7 @@ from .job_setup import validate_job_options
 from .pipeline import run_pipeline
 from .secrets import pop_job_secrets, set_job_secret
 from .subtitles import sync_subtitle_segments
+from .translation import TranslationError, translate_paragraphs
 from .utils import (
     JobDataError,
     JobDeletedError,
@@ -203,6 +204,14 @@ class AutoChaptersRequest(BaseModel):
     model: str | None = None
     title_language: str = Field(default="zh", pattern="^(zh|en)$")
     api_key: str = ""
+    instructions: str = Field(default="", max_length=500)
+
+
+class TranslateRequest(BaseModel):
+    target_language: str = Field(min_length=1, max_length=40)
+    api_key: str = ""
+    base_url: str | None = None
+    model: str | None = None
 
 
 class URLJobRequest(BaseModel):
@@ -225,7 +234,7 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
     keys = [
         "id", "title", "created_at", "started_at", "finished_at",
         "status", "stage", "progress", "error", "audio", "settings",
-        "speakers", "paragraphs", "chapters", "stats", "exports",
+        "speakers", "paragraphs", "chapters", "translations", "stats", "exports",
         "export_error", "speaker_names", "correction", "correction_warning",
     ]
     return {key: job.get(key) for key in keys}
@@ -278,6 +287,27 @@ def _write_exports_in_place(job: dict[str, Any]) -> None:
         job.pop("export_error", None)
     except Exception as exc:
         job["export_error"] = str(exc)
+
+
+def _invalidate_translations(
+    job: dict[str, Any],
+    paragraph_ids: list[str],
+) -> None:
+    translations = job.get("translations")
+    if not isinstance(translations, dict) or not paragraph_ids:
+        return
+    clear_all = any(not paragraph_id for paragraph_id in paragraph_ids)
+    for entry in translations.values():
+        if not isinstance(entry, dict):
+            continue
+        texts = entry.get("texts")
+        if not isinstance(texts, dict):
+            continue
+        if clear_all:
+            entry["texts"] = {}
+        else:
+            for paragraph_id in paragraph_ids:
+                texts.pop(paragraph_id, None)
 
 
 def _require_job(job_id: str) -> dict[str, Any]:
@@ -576,6 +606,7 @@ def update_paragraphs(job_id: str, payload: ParagraphsUpdate) -> dict[str, Any]:
         if speaker_ids is not None and len(speaker_ids) != len(paragraphs):
             raise HTTPException(status_code=400, detail="说话人数量不一致，请刷新后重试。")
         changed_ids: list[str] = []
+        changed_text_ids: list[str] = []
         for index, (paragraph, text) in enumerate(zip(paragraphs, payload.texts)):
             new_text = text.strip()
             new_speaker = paragraph.get("speaker_id")
@@ -586,12 +617,15 @@ def update_paragraphs(job_id: str, payload: ParagraphsUpdate) -> dict[str, Any]:
             if text_changed or speaker_changed:
                 changed_ids.append(str(paragraph.get("id") or ""))
             if text_changed:
+                changed_text_ids.append(str(paragraph.get("id") or ""))
                 paragraph["manual_edited"] = True
                 paragraph["correction_status"] = "edited"
             paragraph["text"] = new_text
             paragraph["speaker_id"] = new_speaker
         if changed_ids:
             sync_subtitle_segments(job, [item for item in changed_ids if item])
+        if changed_text_ids:
+            _invalidate_translations(job, changed_text_ids)
         job["paragraphs"] = paragraphs
         _write_exports_in_place(job)
 
@@ -648,6 +682,7 @@ async def auto_chapters(job_id: str, payload: AutoChaptersRequest) -> dict[str, 
             payload.model or DEFAULT_LLM_MODEL,
             payload.title_language,
             api_key=payload.api_key,
+            instructions=payload.instructions,
         )
     except ChapterError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -656,6 +691,74 @@ async def auto_chapters(job_id: str, payload: AutoChaptersRequest) -> dict[str, 
         _require_done(job)
         job["chapters"] = chapters
         _write_exports_in_place(job)
+
+    return _public_job(_mutate_or_http(job_id, apply))
+
+
+@app.post("/api/jobs/{job_id}/translate")
+async def translate(job_id: str, payload: TranslateRequest) -> dict[str, Any]:
+    with job_lock(job_id):
+        job = _require_job(job_id)
+        _require_done(job)
+        paragraphs = copy.deepcopy(job.get("paragraphs", []))
+        settings = dict(job.get("settings") or {})
+    if is_job_deleted(job_id):
+        raise HTTPException(status_code=404, detail="任务已删除")
+    if not paragraphs:
+        raise HTTPException(status_code=400, detail="逐字稿为空，无法翻译。")
+
+    language = payload.target_language.strip()
+    if not language:
+        raise HTTPException(status_code=400, detail="请选择目标语言。")
+    snapshot = {
+        str(paragraph.get("id") or f"idx-{index}"): str(paragraph.get("text") or "")
+        for index, paragraph in enumerate(paragraphs)
+    }
+    base_url = (
+        payload.base_url
+        or settings.get("deepseek_base_url")
+        or DEFAULT_DEEPSEEK_BASE_URL
+    )
+    model = (
+        payload.model
+        or settings.get("deepseek_model")
+        or DEFAULT_DEEPSEEK_MODEL
+    )
+
+    try:
+        texts = await run_in_threadpool(
+            translate_paragraphs,
+            paragraphs,
+            language,
+            api_key=payload.api_key,
+            base_url=base_url,
+            model=model,
+        )
+    except TranslationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def apply(job: dict[str, Any]) -> None:
+        _require_done(job)
+        current = {
+            str(paragraph.get("id") or f"idx-{index}"): str(
+                paragraph.get("text") or ""
+            )
+            for index, paragraph in enumerate(job.get("paragraphs", []))
+        }
+        if current != snapshot:
+            raise HTTPException(
+                status_code=409,
+                detail="逐字稿在翻译期间已被修改，请重新翻译。",
+            )
+        translations = job.get("translations")
+        if not isinstance(translations, dict):
+            translations = {}
+        translations[language] = {
+            "model": model,
+            "created_at": now_iso(),
+            "texts": texts,
+        }
+        job["translations"] = translations
 
     return _public_job(_mutate_or_http(job_id, apply))
 
@@ -683,6 +786,7 @@ def undo_correction(job_id: str) -> dict[str, Any]:
             paragraph.pop("correction_edits", None)
         if changed_ids:
             sync_subtitle_segments(job, changed_ids)
+            _invalidate_translations(job, changed_ids)
         correction = job.setdefault("correction", {})
         correction["status"] = "undone"
         correction["applied"] = 0

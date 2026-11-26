@@ -146,10 +146,27 @@ def _validate_job_data(job_id: str, data: Any) -> dict[str, Any]:
             fail(f"{key} 不是数组")
         if any(not isinstance(item, dict) for item in value):
             fail(f"{key} 中包含无效条目")
-    for key in ("audio", "settings", "stats", "correction"):
+    for key in ("audio", "settings", "stats", "correction", "translations"):
         value = data.get(key)
         if value is not None and not isinstance(value, dict):
             fail(f"{key} 不是对象")
+
+    translations = data.get("translations")
+    if isinstance(translations, dict):
+        for language, entry in translations.items():
+            if not isinstance(language, str) or not language:
+                fail("translations 的语言键不是字符串")
+            if not isinstance(entry, dict):
+                fail("translations 中包含无效条目")
+            for key in ("model", "created_at"):
+                if not _optional_str(entry.get(key)):
+                    fail(f"translations.{key} 不是字符串")
+            texts = entry.get("texts")
+            if not isinstance(texts, dict) or any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in texts.items()
+            ):
+                fail("translations.texts 不是字符串映射")
 
     audio = data.get("audio") or {}
     for key in ("filename", "source_filename", "source_url"):

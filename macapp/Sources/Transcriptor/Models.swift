@@ -60,10 +60,23 @@ struct Speaker: Codable, Identifiable, Hashable {
 }
 
 struct Paragraph: Codable, Hashable {
+    var id: String?
     var start: Double
     var end: Double?
     var text: String
     var speakerId: String
+}
+
+struct TranslationSet: Codable, Hashable {
+    var model: String?
+    var createdAt: String?
+    var texts: [String: String]
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case createdAt = "created_at"
+        case texts
+    }
 }
 
 struct Chapter: Codable, Identifiable, Hashable {
@@ -100,6 +113,7 @@ struct Job: Codable, Identifiable {
     var speakers: [Speaker]
     var paragraphs: [Paragraph]
     var chapters: [Chapter]
+    var translations: [String: TranslationSet]?
     var stats: Stats?
     var exports: [String: String]?
     var exportError: String?
@@ -164,17 +178,33 @@ struct ChaptersPayload: Codable {
     var chapters: [Item]
 }
 
+struct TranslatePayload: Codable {
+    var targetLanguage: String
+    var apiKey: String
+    var baseURL: String
+    var model: String
+
+    enum CodingKeys: String, CodingKey {
+        case targetLanguage = "target_language"
+        case apiKey = "api_key"
+        case baseURL = "base_url"
+        case model
+    }
+}
+
 struct AutoChaptersPayload: Codable {
     var endpoint: String
     var model: String
     var titleLanguage: String
     var apiKey: String
+    var instructions: String
 
     enum CodingKeys: String, CodingKey {
         case endpoint
         case model
         case titleLanguage = "title_language"
         case apiKey = "api_key"
+        case instructions
     }
 }
 

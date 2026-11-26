@@ -15,7 +15,7 @@ final class ChapterRefreshOrderProtocol: URLProtocol {
     static func json(chapters: Bool, text: String = "newer saved text") -> String {
         let items = chapters ? "[{\"start\":0,\"title\":\"Generated\"}]" : "[]"
         return """
-        {"id":"A","title":"Synthetic A","status":"done","speakers":[{"id":"S1","name":"Test"}],"paragraphs":[{"start":0,"text":"\(text)","speaker_id":"S1"}],"chapters":\(items)}
+        {"id":"A","title":"Synthetic A","status":"done","speakers":[{"id":"S1","name":"Test"}],"paragraphs":[{"id":"p0001","start":0,"text":"\(text)","speaker_id":"S1"}],"chapters":\(items),"translations":{"English":{"texts":{"p0001":"Translated \(text)"}}}}
         """
     }
 

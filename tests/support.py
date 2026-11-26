@@ -70,5 +70,6 @@ def make_job(
         ],
         "paragraphs": paragraphs,
         "chapters": [],
+        "translations": {},
         "stats": {"segments": 1, "paragraphs": len(paragraphs), "speakers": 1},
     }

@@ -123,19 +123,42 @@ struct APIClient {
         endpoint: String,
         model: String,
         titleLanguage: String,
-        apiKey: String = ""
+        apiKey: String = "",
+        instructions: String = ""
     ) async throws -> Job {
         let payload = AutoChaptersPayload(
             endpoint: endpoint,
             model: model,
             titleLanguage: titleLanguage,
-            apiKey: apiKey
+            apiKey: apiKey,
+            instructions: instructions
         )
         return try await send(
             "jobs/\(id)/chapters/auto",
             method: "POST",
             body: payload,
             timeout: 300
+        )
+    }
+
+    func translate(
+        _ id: String,
+        targetLanguage: String,
+        apiKey: String,
+        baseURL: String,
+        model: String
+    ) async throws -> Job {
+        let payload = TranslatePayload(
+            targetLanguage: targetLanguage,
+            apiKey: apiKey,
+            baseURL: baseURL,
+            model: model
+        )
+        return try await send(
+            "jobs/\(id)/translate",
+            method: "POST",
+            body: payload,
+            timeout: 900
         )
     }
 

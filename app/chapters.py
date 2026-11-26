@@ -237,6 +237,7 @@ def auto_chapters_llm(
     title_language: str = "zh",
     timeout: float = 180.0,
     api_key: str = "",
+    instructions: str = "",
 ) -> list[dict[str, Any]]:
     if not paragraphs:
         return []
@@ -244,20 +245,37 @@ def auto_chapters_llm(
     if not endpoint:
         raise ChapterError("未配置 LLM 接口地址。")
 
+    custom = re.sub(r"\s+", " ", (instructions or "")).strip()[:500]
+    max_chapters = 30 if custom else 12
+    merge_window = 15.0 if custom else 45.0
     language_instruction = (
         "章节标题使用简体中文，简洁、具体，不超过 18 个汉字。"
         if title_language != "en"
         else "Write chapter titles in English, concise and specific, at most 10 words."
     )
+    range_instruction = (
+        "Follow the additional user requirements below for chapter granularity, "
+        "with up to 30 chapters."
+        if custom
+        else "Divide it into 6 to 12 chapters."
+    )
     system = (
         "You are an expert interview editor. You receive a timestamped transcript outline. "
-        "Divide it into 6 to 12 chapters. Return ONLY a JSON object with the shape "
+        + range_instruction
+        + " Return ONLY a JSON object with the shape "
         "{\"chapters\":[{\"start\":\"MM:SS\",\"title\":\"...\"}]}, with no markdown fences. "
         "The first chapter must start at 00:00. Every start timestamp must be one of the "
         "timestamps that appears in the outline. Do not repeat timestamps. "
         "Chapters should cover the whole interview in order. "
         + language_instruction
     )
+    if custom:
+        system += (
+            " Additional requirements from the user for chapter granularity and titles: "
+            + custom
+            + " Follow these requirements, but never change the required JSON shape, "
+            "timestamp rules, or output format."
+        )
     user = "Transcript outline:\n\n" + _outline(paragraphs, speakers)
 
     payload: dict[str, Any] = {
@@ -267,7 +285,7 @@ def auto_chapters_llm(
             {"role": "user", "content": user},
         ],
         "temperature": 0.2,
-        "max_tokens": 2500,
+        "max_tokens": 4000 if custom else 2500,
         "response_format": {"type": "json_object"},
     }
     if (api_key or "").strip():
@@ -391,7 +409,7 @@ def auto_chapters_llm(
     # Merge chapters that start too close together, keeping the later title.
     cleaned: list[dict[str, Any]] = []
     for chapter in chapters:
-        if cleaned and chapter["start"] - cleaned[-1]["start"] < 45:
+        if cleaned and chapter["start"] - cleaned[-1]["start"] < merge_window:
             cleaned[-1]["title"] = chapter["title"]
             continue
         cleaned.append(chapter)
@@ -399,7 +417,7 @@ def auto_chapters_llm(
         cleaned[0]["start"] = 0.0
     if len(cleaned) < 2 and duration >= 360:
         raise ChapterError("章节时间点过于集中，请重试。")
-    return _merge_chapters(cleaned, 12)
+    return _merge_chapters(cleaned, max_chapters)
 
 
 def _merge_chapters(chapters: list[dict[str, Any]], max_count: int) -> list[dict[str, Any]]:

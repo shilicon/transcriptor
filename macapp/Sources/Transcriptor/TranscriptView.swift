@@ -3,6 +3,8 @@ import SwiftUI
 struct TranscriptView: View {
     let job: Job
     let editing: Bool
+    let translation: [String: String]?
+    let translationLanguage: String
     @Binding var draftParagraphs: [Paragraph]
     @Binding var draftSpeakerIds: [String]
     @EnvironmentObject private var model: AppModel
@@ -128,6 +130,25 @@ struct TranscriptView: View {
                     .font(.body)
                     .lineSpacing(4)
                     .textSelection(.enabled)
+            }
+
+            if !editing,
+               let translation,
+               let translated = translation[paragraph.id ?? "idx-\(index)"],
+               !translated.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Text("译")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(transcriptorAccent)
+                        .padding(.top, 2)
+                    Text(translated)
+                        .font(.body)
+                        .lineSpacing(3)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .padding(.leading, 2)
+                .help("译文：\(translationLanguage)")
             }
         }
         .padding(.bottom, 18)

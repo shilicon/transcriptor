@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("deepseek.keyRevision") private var keyRevision = 0
 
     @State private var apiKey = ""
+    @State private var loadedApiKey = ""
     @State private var saved = false
 
     var body: some View {
@@ -33,6 +34,7 @@ struct SettingsView: View {
                 HStack {
                     Button(saved ? "已保存" : "保存 API Key") {
                         KeychainStore.save(apiKey, account: KeychainStore.deepSeekAccount)
+                        loadedApiKey = apiKey
                         keyRevision += 1
                         saved = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -44,6 +46,7 @@ struct SettingsView: View {
 
                     Button("清除") {
                         apiKey = ""
+                        loadedApiKey = ""
                         KeychainStore.delete(account: KeychainStore.deepSeekAccount)
                         keyRevision += 1
                     }
@@ -74,6 +77,7 @@ struct SettingsView: View {
         .frame(width: 560, height: 470)
         .onAppear {
             apiKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+            loadedApiKey = apiKey
             if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 baseURL = "https://api.deepseek.com"
             }
@@ -82,7 +86,9 @@ struct SettingsView: View {
             }
         }
         .onDisappear {
+            guard apiKey != loadedApiKey else { return }
             KeychainStore.save(apiKey, account: KeychainStore.deepSeekAccount)
+            loadedApiKey = apiKey
             keyRevision += 1
         }
     }

@@ -20,7 +20,7 @@ final class MockURLProtocol: URLProtocol {
         let chapters = chapter.isEmpty ? "[]" : "[{\"start\":0,\"title\":\"\(chapter)\"}]"
         let paragraphText = text ?? "\(id) text"
         return """
-        {"id":"\(id)","title":"Audit \(id)","status":"done","speakers":[{"id":"S1","name":"Test"}],"paragraphs":[{"start":0,"text":"\(paragraphText)","speaker_id":"S1"}],"chapters":\(chapters)}
+        {"id":"\(id)","title":"Audit \(id)","status":"done","speakers":[{"id":"S1","name":"Test"}],"paragraphs":[{"id":"p0001","start":0,"text":"\(paragraphText)","speaker_id":"S1"}],"chapters":\(chapters),"translations":{"English":{"model":"test","created_at":"2026-11-11T00:00:00+08:00","texts":{"p0001":"Translated \(id)"}}}}
         """
     }
 

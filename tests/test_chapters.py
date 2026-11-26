@@ -21,6 +21,20 @@ CHAPTERS = [
     {"start": "00:00", "title": "开场"},
     {"start": "10:00", "title": "后半段"},
 ]
+FINE_CHAPTERS = [
+    {"start": f"{index * 5:02d}:00", "title": f"第 {index + 1} 节"}
+    for index in range(15)
+]
+FINE_PARAGRAPHS = [
+    {
+        "id": f"p{index}",
+        "start": index * 300.0,
+        "end": index * 300.0 + 9.0,
+        "speaker_id": "S1",
+        "text": f"第 {index + 1} 段内容",
+    }
+    for index in range(15)
+]
 
 
 def _success(content: str, finish_reason: str = "stop") -> dict:
@@ -35,7 +49,13 @@ def _success(content: str, finish_reason: str = "stop") -> dict:
 
 
 class ChapterLLMTests(unittest.TestCase):
-    def _run(self, api_key: str, content: str | None = None):
+    def _run(
+        self,
+        api_key: str,
+        content: str | None = None,
+        instructions: str = "",
+        paragraphs: list | None = None,
+    ):
         seen = {}
 
         def handle(request):
@@ -60,12 +80,13 @@ class ChapterLLMTests(unittest.TestCase):
 
         with patch.object(chapters.httpx, "Client", side_effect=mock_client):
             result = chapters.auto_chapters_llm(
-                PARAGRAPHS,
+                paragraphs or PARAGRAPHS,
                 {"S1": "讲者"},
                 "https://api.deepseek.com",
                 "deepseek-flash",
                 "zh",
                 api_key=api_key,
+                instructions=instructions,
             )
         return seen, result
 
@@ -91,6 +112,32 @@ class ChapterLLMTests(unittest.TestCase):
         )
         _, result = self._run("sk-synthetic", content=content)
         self.assertEqual([chapter["title"] for chapter in result], ["开场", "后半段"])
+
+    def test_custom_instructions_allow_finer_chapters(self):
+        content = json.dumps({"chapters": FINE_CHAPTERS}, ensure_ascii=False)
+        seen, result = self._run(
+            "sk-synthetic",
+            content=content,
+            instructions="每 5 分钟一章，按技术主题分得更细",
+            paragraphs=FINE_PARAGRAPHS,
+        )
+        self.assertEqual(len(result), 15)
+        system = seen["payload"]["messages"][0]["content"]
+        self.assertIn("每 5 分钟一章", system)
+        self.assertIn("up to 30 chapters", system)
+        self.assertEqual(seen["payload"]["max_tokens"], 4000)
+
+    def test_default_chapters_remain_capped_at_12(self):
+        content = json.dumps({"chapters": FINE_CHAPTERS}, ensure_ascii=False)
+        seen, result = self._run(
+            "sk-synthetic",
+            content=content,
+            paragraphs=FINE_PARAGRAPHS,
+        )
+        self.assertEqual(len(result), 12)
+        system = seen["payload"]["messages"][0]["content"]
+        self.assertIn("6 to 12 chapters", system)
+        self.assertEqual(seen["payload"]["max_tokens"], 2500)
 
     def test_fenced_json_object_is_parsed(self):
         content = "```json\n" + json.dumps(

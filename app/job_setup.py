@@ -65,6 +65,7 @@ def build_job(
         "segments": [],
         "paragraphs": [],
         "chapters": [],
+        "translations": {},
         "stats": {},
     }
     if title_from_url:

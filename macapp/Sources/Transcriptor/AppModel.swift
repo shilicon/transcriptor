@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isBusy = false
     @Published private(set) var generatingChaptersJobs: Set<String> = []
+    @Published private(set) var translatingJobs: Set<String> = []
 
     @Published var editingTranscript = false
     @Published var draftParagraphs: [Paragraph] = [] {
@@ -31,6 +32,11 @@ final class AppModel: ObservableObject {
 
     var generatingChaptersJobId: String? {
         isGeneratingChapters ? selectedJobId : nil
+    }
+
+    var isTranslating: Bool {
+        guard let id = selectedJobId else { return false }
+        return translatingJobs.contains(id)
     }
 
     let backend = BackendManager()
@@ -411,7 +417,8 @@ final class AppModel: ObservableObject {
         endpoint: String,
         model: String,
         titleLanguage: String,
-        apiKey: String = ""
+        apiKey: String = "",
+        instructions: String = ""
     ) async {
         guard let id = job?.id, selectedJobId == id else { return }
         let mutation = beginMutation()
@@ -424,7 +431,8 @@ final class AppModel: ObservableObject {
                 endpoint: endpoint,
                 model: model,
                 titleLanguage: titleLanguage,
-                apiKey: apiKey
+                apiKey: apiKey,
+                instructions: instructions
             )
             guard canApply(mutation, for: id),
                   updateGeneration == jobUpdateGeneration else {
@@ -464,6 +472,45 @@ final class AppModel: ObservableObject {
             await loadJobs()
         } catch {
             if selectedJobId == id { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func translate(
+        targetLanguage: String,
+        apiKey: String,
+        baseURL: String,
+        model: String
+    ) async {
+        guard let id = job?.id, selectedJobId == id,
+              !translatingJobs.contains(id) else {
+            return
+        }
+        translatingJobs.insert(id)
+        defer { translatingJobs.remove(id) }
+        let mutation = beginMutation()
+        let updateGeneration = jobUpdateGeneration
+        do {
+            let updated = try await api.translate(
+                id,
+                targetLanguage: targetLanguage,
+                apiKey: apiKey,
+                baseURL: baseURL,
+                model: model
+            )
+            guard canApply(mutation, for: id),
+                  updateGeneration == jobUpdateGeneration else {
+                await refreshIfSuperseded(
+                    mutation,
+                    update: updateGeneration,
+                    jobID: id
+                )
+                return
+            }
+            adopt(updated, for: id)
+        } catch {
+            if selectedJobId == id {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

@@ -18,6 +18,7 @@ struct ChaptersView: View {
     @AppStorage("chapter.language") private var titleLanguage = "zh"
     @AppStorage("chapter.provider") private var provider = "local"
     @AppStorage("chapter.providerChosen") private var providerChosen = false
+    @AppStorage("chapter.instructions") private var chapterInstructions = ""
     @AppStorage("deepseek.baseURL") private var deepseekBaseURL = "https://api.deepseek.com"
     @AppStorage("deepseek.model") private var deepseekModel = "deepseek-flash"
     @AppStorage("deepseek.keyRevision") private var keyRevision = 0
@@ -143,6 +144,33 @@ struct ChaptersView: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("分章要求（可选）")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(chapterInstructions.count)/500")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                TextField(
+                    "例如：分得更细，每 3–5 分钟一章，按技术主题细分",
+                    text: $chapterInstructions,
+                    axis: .vertical
+                )
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...4)
+                .onChange(of: chapterInstructions) { _, value in
+                    if value.count > 500 {
+                        chapterInstructions = String(value.prefix(500))
+                    }
+                }
+                Text("不填写时默认 6–12 章；填写后最多 30 章。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack(spacing: 8) {
                 Picker("", selection: $titleLanguage) {
                     Text("中文标题").tag("zh")
@@ -166,7 +194,9 @@ struct ChaptersView: View {
                             endpoint: isDeepSeek ? deepseekBaseURL : endpoint,
                             model: isDeepSeek ? deepseekModel : llmModel,
                             titleLanguage: titleLanguage,
-                            apiKey: apiKey
+                            apiKey: apiKey,
+                            instructions: chapterInstructions
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
                         )
                         syncFromJob()
                     }

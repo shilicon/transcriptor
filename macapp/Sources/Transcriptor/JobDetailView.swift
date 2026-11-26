@@ -13,8 +13,18 @@ struct JobDetailView: View {
     @State private var speakerNames: [String: String] = [:]
     @State private var showDeleteConfirm = false
     @State private var showUndoConfirm = false
+    @AppStorage("translation.target") private var translationTarget = "简体中文"
+    @AppStorage("translation.show") private var showTranslations = true
+    @AppStorage("deepseek.baseURL") private var deepseekBaseURL = "https://api.deepseek.com"
+    @AppStorage("deepseek.model") private var deepseekModel = "deepseek-flash"
 
     private var current: Job { model.job ?? job }
+
+    private let translationLanguages = ["简体中文", "English"]
+
+    private var currentTranslation: TranslationSet? {
+        current.translations?[translationTarget]
+    }
 
     var body: some View {
         ScrollView {
@@ -42,7 +52,19 @@ struct JobDetailView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear(perform: syncSpeakerNames)
+        .onAppear {
+            syncSpeakerNames()
+            if !translationLanguages.contains(translationTarget) {
+                translationTarget = translationLanguages[0]
+            }
+            if current.translations?[translationTarget] == nil,
+               let language = translationLanguages.first(
+                   where: { current.translations?[$0] != nil }
+               ) {
+                translationTarget = language
+                showTranslations = true
+            }
+        }
         .onChange(of: current.speakers) { _, _ in syncSpeakerNames() }
         .onChange(of: model.draftParagraphs) { _, _ in model.markDraftChanged() }
         .onChange(of: model.draftSpeakerIds) { _, _ in model.markDraftChanged() }
@@ -315,6 +337,16 @@ struct JobDetailView: View {
                     }
                 }
 
+                if selectedTab == .transcript && !model.editingTranscript {
+                    HStack(spacing: 10) {
+                        translationControls
+                        Spacer()
+                        Text("使用 AI 翻译整份逐字稿，译文会保存在任务中")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Divider()
 
                 switch selectedTab {
@@ -322,6 +354,10 @@ struct JobDetailView: View {
                     TranscriptView(
                         job: current,
                         editing: model.editingTranscript,
+                        translation: showTranslations && !model.editingTranscript
+                            ? currentTranslation?.texts
+                            : nil,
+                        translationLanguage: translationTarget,
                         draftParagraphs: $model.draftParagraphs,
                         draftSpeakerIds: $model.draftSpeakerIds
                     )
@@ -330,6 +366,86 @@ struct JobDetailView: View {
                         .id(current.id)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var translationControls: some View {
+        Menu {
+            Section("选择译文或开始翻译") {
+                ForEach(translationLanguages, id: \.self) { language in
+                    Button {
+                        if current.translations?[language] != nil {
+                            translationTarget = language
+                            showTranslations = true
+                        } else {
+                            startTranslation(language)
+                        }
+                    } label: {
+                        if language == translationTarget, currentTranslation != nil {
+                            Label(language, systemImage: "checkmark")
+                        } else {
+                            Text(language)
+                        }
+                    }
+                }
+            }
+
+            if currentTranslation != nil {
+                Divider()
+                Button(showTranslations ? "隐藏译文" : "显示译文") {
+                    showTranslations.toggle()
+                }
+                Button("重新翻译为 \(translationTarget)") {
+                    startTranslation(translationTarget)
+                }
+            }
+        } label: {
+            Label(
+                model.isTranslating
+                    ? "翻译中…"
+                    : (currentTranslation != nil ? "译文：\(translationTarget)" : "翻译"),
+                systemImage: "character.bubble"
+            )
+        }
+        .disabled(model.isTranslating)
+
+        if model.isTranslating {
+            ProgressView()
+                .controlSize(.small)
+        }
+    }
+
+    private func startTranslation(_ language: String) {
+        let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = String(trimmed.prefix(40))
+        guard !target.isEmpty else { return }
+        let apiKey = KeychainStore.load(account: KeychainStore.deepSeekAccount)
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            model.errorMessage = "还没有配置 AI API Key。请先在设置中填写。"
+            return
+        }
+        let jobID = current.id
+        let configuredBase = current.settings?.deepseekBaseUrl?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let configuredModel = current.settings?.deepseekModel?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let baseURL = configuredBase.isEmpty ? deepseekBaseURL : configuredBase
+        let modelName = configuredModel.isEmpty ? deepseekModel : configuredModel
+
+        Task {
+            await model.translate(
+                targetLanguage: target,
+                apiKey: apiKey,
+                baseURL: baseURL,
+                model: modelName
+            )
+            guard model.job?.id == jobID,
+                  model.job?.translations?[target] != nil else {
+                return
+            }
+            translationTarget = target
+            showTranslations = true
         }
     }
 
